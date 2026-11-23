@@ -408,8 +408,6 @@ export function ProjectPage({ token, runnerId, id }: { token: string; runnerId?:
   // Archived threads too, so the list matches the "22 threads" in the
   // sidebar rather than only the ones still in the inbox.
   const threads = useLiveQuery(api.phone.projectThreads, head ? { token, runnerId: head.runnerId, projectId: id, limit } : 'skip');
-  // A new project starts from the first page again.
-  useEffect(() => setLimit(PROJECT_THREADS_FIRST), [id]);
   if (!rows) return <div className="pad muted">Loading…</div>;
   if (!head || p === null) return <PageGone view="projects" what="That project has gone." />;
   if (!p) return <div className="pad muted">Loading…</div>;
@@ -722,10 +720,8 @@ export function NewThread({ token }: { token: string }) {
   const options = modelOptions(accounts, target);
   const { model, effort, efforts } = resolveChoices(options, pick);
   const modelKey = model?.key ?? '';
-  useEffect(() => {
-    if (runnerId && !explicit) setRunnerId('');
-    if (pick.modelKey !== modelKey || pick.effort !== effort) setPick({ modelKey, effort });
-  }, [runnerId, explicit, pick, modelKey, effort]);
+  if (runnerId && !explicit) setRunnerId('');
+  if (pick.modelKey !== modelKey || pick.effort !== effort) setPick({ modelKey, effort });
   const changeRunner = (id: string) => {
     const next = modelOptions(accounts, id || automatic);
     const same = model && (next.find((m) => m.model === model.model && m.accountId === model.accountId) ?? next.find((m) => m.model === model.model));
