@@ -10,6 +10,8 @@ Where one's CLI isn't installed and logged in, no account or pool of its
 appears. `runner.json`'s `cursorPath`,
 `opencodePath`, `grokPath` and `antigravityPath` set a binary by hand; otherwise each is found
 where it installs (Antigravity: an `agy_acp_server.par` on the PATH).
+On Windows, Cursor can also run the newest complete version installed under
+`%LOCALAPPDATA%\cursor-agent\versions` using its bundled `node.exe` and `index.js`.
 
 - **One login each**, per machine, ids `opencode-main`, `cursor-main`,
   `grok-main` (signed in: `~/.grok/auth.json` exists, never opened) and
@@ -47,6 +49,12 @@ where it installs (Antigravity: an `agy_acp_server.par` on the PATH).
   An edit of a file that runs as
   code asks every time, and so does an edit whose arguments aren't the plain file
   tools' (nothing can say where else it writes). Auto acts like Ask.
+  Set `"opencodeUserConfig": true` in `runner.json` to let normal OpenCode
+  sessions and model listing use the runner user's OpenCode config. Only turn
+  this on for a config you trust: user plugins can run code and user MCP servers
+  can start before a permission request. Threadbear still supplies its inline
+  permission rules and disables project config. Small jobs keep the default
+  isolation even when this option is on.
 - **Questions.** A thread offers forms (`clientCapabilities.elicitation.form`).
   An `elicitation/create` in form mode becomes question cards, one per field:
   its description is the question, its title the header, a list a multiple

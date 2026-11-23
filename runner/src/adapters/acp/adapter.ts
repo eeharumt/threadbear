@@ -56,6 +56,7 @@ export type AcpAdapterDeps = {
   // The runner's data dir, where an agent keeps what Threadbear gives it
   // (Grok's hook: grok-guard.ts).
   dataDir?: string;
+  opencodeUserConfig?: boolean;
 };
 
 // "Always allow" for a file edit: the thread's edits, while they aren't to
@@ -135,8 +136,13 @@ export class AcpAdapter implements AgentAdapter {
     const env = cliEnv(account, this.deps.env ?? process.env);
     delete env.CLAUDE_CONFIG_DIR;
     delete env.CLAUDE_AGENT_SDK_CLIENT_APP;
+    const { opencodeUserConfig } = this.deps;
+    // The runner user opts in to their own config, not a thread's config folder.
+    const overrides = opencodeUserConfig && threadEnv
+      ? Object.fromEntries(Object.entries(threadEnv).filter(([name]) => !/^(OPENCODE_CONFIG_DIR|XDG_CONFIG_HOME|HOME|USERPROFILE)$/i.test(name)))
+      : threadEnv;
     // Last, so a thread's own variables can't take these off.
-    return { ...env, ...threadEnv, ...this.deps.agent.env({ binary }) };
+    return { ...env, ...overrides, ...this.deps.agent.env({ binary, opencodeUserConfig }) };
   }
 
   private binary(): string {
@@ -164,7 +170,7 @@ export class AcpAdapter implements AgentAdapter {
     const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'threadbear-acp-'));
     let p: AcpProcess;
     try {
-      p = new AcpProcess({ binary: bin, args: deps.agent.args({ dataDir: deps.dataDir, binary: bin }), env: this.env(account, bin), cwd, registry: deps.registry, log: deps.log, label: `models:${account.id}`, timings: deps.timings });
+      p = new AcpProcess({ binary: bin, args: deps.agent.args({ dataDir: deps.dataDir, binary: bin, opencodeUserConfig: deps.opencodeUserConfig }), env: this.env(account, bin), cwd, registry: deps.registry, log: deps.log, label: `models:${account.id}`, timings: deps.timings });
     } catch (e) {
       fs.rmSync(cwd, { recursive: true, force: true });
       throw e;
@@ -258,7 +264,7 @@ export class AcpSession implements AgentSession {
     this.trusted = deps.agent.trusts?.(opts.cwd) ?? false;
     this.binary = binary;
     this.startRefusal = deps.agent.refuses?.({ cwd: opts.cwd, mode: 'ask', trusted: this.trusted, binary });
-    const args = deps.agent.args({ dataDir: deps.dataDir, trusted: this.trusted, binary });
+    const args = deps.agent.args({ dataDir: deps.dataDir, trusted: this.trusted, binary, opencodeUserConfig: deps.opencodeUserConfig });
     this.guard = deps.agent.guardName?.(args);
     this.proc = new AcpProcess({ binary, args, env, cwd: opts.cwd, registry: deps.registry, log: deps.log, label: opts.threadId, timings: deps.timings, forms: true, lowered: true });
     this.proc.onNotification = (method, params) => this.notification(method, params);

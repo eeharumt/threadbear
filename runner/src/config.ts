@@ -105,6 +105,7 @@ export type Config = {
   // each is installed.
   cursorPath?: string;
   opencodePath?: string;
+  opencodeUserConfig: boolean;
   grokPath?: string;
   // agy_acp_server.par, with localharness_external beside it.
   antigravityPath?: string;
@@ -215,6 +216,7 @@ export type RunnerJson = {
   codexPath?: string;
   cursorPath?: string;
   opencodePath?: string;
+  opencodeUserConfig?: boolean;
   grokPath?: string;
   antigravityPath?: string;
   codexArgs?: string[];
@@ -514,6 +516,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, opts: { readOnl
     ...(codexPath ? { codexPath: expand(codexPath) } : {}),
     ...(nonEmpty(json.cursorPath) ? { cursorPath: expand(nonEmpty(json.cursorPath)!) } : {}),
     ...(nonEmpty(json.opencodePath) ? { opencodePath: expand(nonEmpty(json.opencodePath)!) } : {}),
+    opencodeUserConfig: json.opencodeUserConfig === true,
     ...(nonEmpty(json.grokPath) ? { grokPath: expand(nonEmpty(json.grokPath)!) } : {}),
     ...(nonEmpty(json.antigravityPath) ? { antigravityPath: expand(nonEmpty(json.antigravityPath)!) } : {}),
     codexArgs: Array.isArray(json.codexArgs) ? json.codexArgs.filter((a): a is string => typeof a === 'string') : [],

@@ -374,7 +374,12 @@ async function main(): Promise<void> {
     },
     codex: { resolve: (start) => resolveCodexBinary(start), checkSurface, testedVersion },
     notice: (level, message) => runner.notice(level, message),
-    acp: { providers: ACP_PROVIDERS, binary: (p) => acpBinary(p as AcpProvider)(), updateArgs: (p) => ACP_AGENTS[p as AcpProvider].updateArgs },
+    acp: {
+      providers: ACP_PROVIDERS,
+      binary: (p) => acpBinary(p as AcpProvider)(),
+      updateArgs: (p) => ACP_AGENTS[p as AcpProvider].updateArgs,
+      commandArgs: (p, binary, args) => ACP_AGENTS[p as AcpProvider].commandArgs?.(binary, args) ?? args,
+    },
   });
   // Other CLIs you use alongside Threadbear (Grok, Muse...), from runner.json.
   const extraUpdates = new ExtraUpdates({ home: cfg.home, log, clock: realClock, extra: cfg.cliUpdates.extra ?? [] });
@@ -473,6 +478,7 @@ async function main(): Promise<void> {
         toolsFor: codexStyleTools,
         extraGuidance: () => RICH_BLOCKS_LINE,
         dataDir: cfg.home,
+        opencodeUserConfig: p === 'opencode' && cfg.opencodeUserConfig,
       }),
     ]),
   );

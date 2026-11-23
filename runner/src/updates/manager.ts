@@ -72,7 +72,7 @@ export type CliUpdatesDeps = {
   execPath?: string; // the runner's Node: npm and the fallback codex sit next to it
   random?: () => number;
   // The ACP agents, with the experiment's switch.
-  acp?: { providers: Provider[]; binary(p: Provider): string | undefined; updateArgs(p: Provider): string[] };
+  acp?: { providers: Provider[]; binary(p: Provider): string | undefined; updateArgs(p: Provider): string[]; commandArgs?(p: Provider, binary: string, args: string[]): string[] };
 };
 
 type UpdateOptions = { version?: string; force?: boolean; bootstrap?: boolean };
@@ -311,7 +311,8 @@ export class CliUpdates {
   private async refreshAcp(p: Provider): Promise<void> {
     const binary = this.d.acp?.binary(p);
     if (!binary) return;
-    const r = await this.exec(binary, ['--version'], { timeoutMs: LOOKUP_TIMEOUT_MS });
+    const args = this.d.acp?.commandArgs?.(p, binary, ['--version']) ?? ['--version'];
+    const r = await this.exec(binary, args, { timeoutMs: LOOKUP_TIMEOUT_MS });
     const version = r.code === 0 ? acpVersion(r.stdout) : undefined;
     if (version && this.installed[p] !== version) {
       this.installed[p] = version;
@@ -323,11 +324,12 @@ export class CliUpdates {
     const binary = this.d.acp?.binary(p);
     if (!binary || this.ps(p).update?.state === 'running') return;
     // One with no updater of its own (Antigravity): a new version is a new download.
-    if (!this.d.acp!.updateArgs(p).length) return this.finish(p, { state: 'unchanged', message: `${cliName(p)} has no updater: download a new version yourself.` });
+    const args = this.d.acp!.updateArgs(p);
+    if (!args.length) return this.finish(p, { state: 'unchanged', message: `${cliName(p)} has no updater: download a new version yourself.` });
     this.setUpdate(p, { state: 'running', message: `Updating ${cliName(p)}` });
     await this.refreshAcp(p);
     const before = this.installed[p];
-    const r = await this.exec(binary, this.d.acp!.updateArgs(p), { timeoutMs: ACP_UPDATE_TIMEOUT_MS });
+    const r = await this.exec(binary, this.d.acp!.commandArgs?.(p, binary, args) ?? args, { timeoutMs: ACP_UPDATE_TIMEOUT_MS });
     await this.refreshAcp(p);
     const now = this.installed[p];
     if (r.code !== 0) {

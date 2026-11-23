@@ -18,7 +18,8 @@ export type AcpProvider = Extract<Provider, 'cursor' | 'opencode' | 'grok' | 'an
 // trusted: the folder was one the agent trusts when this process started.
 // binary: the program about to be started, for an agent whose flags depend
 // on its version (OpenCode).
-export type AgentRun = { dataDir?: string; noTools?: boolean; trusted?: boolean; binary?: string };
+type OpenCodeRun = { noTools?: boolean; opencodeUserConfig?: boolean };
+export type AgentRun = OpenCodeRun & { dataDir?: string; trusted?: boolean; binary?: string };
 
 export type AcpAgent = {
   provider: AcpProvider;
@@ -38,13 +39,15 @@ export type AcpAgent = {
   args(run?: AgentRun): string[];
   // Runs the agent's own updater, when Update is pressed. Empty: it has none.
   updateArgs: string[];
+  // For CLIs installed as a script run by a bundled interpreter.
+  commandArgs?(binary: string, args: string[]): string[];
   // Set on every process it starts. What stops a thread running tools
   // unguarded is here, so it applies whatever mode the thread starts in and
   // whatever it changes to later: the runner answers each request (AcpSession).
   // noTools: for a small job, where the agent may not use anything at all.
   // binary: the program it's for.
   // undefined takes a variable out of the environment altogether.
-  env(o?: { noTools?: boolean; binary?: string }): Record<string, string | undefined>;
+  env(o?: OpenCodeRun & { binary?: string }): Record<string, string | undefined>;
   // Whether the process that answered initialize really is this agent, as
   // the same command name can be another program's.
   identifies(init: InitializeResult): boolean;
@@ -116,7 +119,49 @@ export function isCursorBinary(file: string): boolean {
   } catch {
     return false;
   }
-  return /(^|\/)cursor-agent(\/|$)/.test(real);
+  return process.platform === 'win32'
+    ? /(^|[\\/])cursor-agent(?:[\\/]|(?:\.exe)?$)/i.test(real)
+    : /(^|\/)cursor-agent(\/|$)/.test(real);
+}
+
+const CURSOR_VERSION = /^(\d{4})\.(\d{1,2})\.(\d{1,2})(?:-\d{2}-\d{2}-\d{2})?-[a-f0-9]+$/i;
+
+function windowsCursorBinary(): string | undefined {
+  const appData = process.env.LOCALAPPDATA;
+  if (process.platform !== 'win32' || !appData || !path.isAbsolute(appData)) return undefined;
+  const versions = path.join(appData, 'cursor-agent', 'versions');
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(versions, { withFileTypes: true });
+  } catch {
+    return undefined;
+  }
+  // The launcher's PowerShell script compares release dates, not hashes.
+  const releases = entries.flatMap((entry) => {
+    const date = entry.isDirectory() ? CURSOR_VERSION.exec(entry.name) : null;
+    return date ? [{ name: entry.name, date: Number(date[1]) * 10000 + Number(date[2]) * 100 + Number(date[3]) }] : [];
+  });
+  for (const { name } of releases.sort((a, b) => b.date - a.date)) {
+    const dir = path.join(versions, name);
+    const node = path.join(dir, 'node.exe');
+    if (!isExecutableFile(node)) continue;
+    try {
+      if (fs.statSync(path.join(dir, 'index.js')).isFile()) return node;
+    } catch {
+      // A partial install doesn't hide the previous version.
+    }
+  }
+  return undefined;
+}
+
+function cursorCommandArgs(binary: string | undefined, args: string[]): string[] {
+  if (process.platform !== 'win32' || !binary || path.basename(binary).toLowerCase() !== 'node.exe') return args;
+  const version = path.dirname(binary);
+  const versions = path.dirname(version);
+  return CURSOR_VERSION.test(path.basename(version)) && path.basename(versions).toLowerCase() === 'versions' &&
+    path.basename(path.dirname(versions)).toLowerCase() === 'cursor-agent'
+    ? [path.join(version, 'index.js'), ...args]
+    : args;
 }
 
 // Grok's installer links ~/.local/bin/grok to ~/.grok/bin/grok and that to
@@ -171,15 +216,20 @@ const DENY_EVERYTHING: Record<string, string> = { '*': 'deny' };
 // from the data folder too), and system or managed config
 // (/Library/Application Support/opencode, /etc/opencode), which outranks
 // everything here by design.
-export function opencodeEnv(o: { noTools?: boolean } = {}): Record<string, string> {
+export function opencodeEnv(o: OpenCodeRun = {}): Record<string, string> {
   const permission = o.noTools ? DENY_EVERYTHING : ASK_FOR_EVERYTHING;
+  const userConfig = o.opencodeUserConfig && !o.noTools;
   return {
     OPENCODE_DISABLE_PROJECT_CONFIG: '1',
     OPENCODE_CONFIG_PROJECT_DISABLE: '1',
-    OPENCODE_CONFIG_DIR: configDir(),
+    ...(userConfig ? {} : { OPENCODE_CONFIG_DIR: configDir() }),
     OPENCODE_CONFIG: '',
     OPENCODE_DISABLE_AUTOUPDATE: '1',
-    OPENCODE_CONFIG_CONTENT: JSON.stringify({ permission, agent: { build: { permission }, plan: { permission }, general: { permission }, explore: { permission } }, plugins: ['-*', 'opencode.*'] }),
+    OPENCODE_CONFIG_CONTENT: JSON.stringify({
+      permission,
+      agent: { build: { permission }, plan: { permission }, general: { permission }, explore: { permission } },
+      ...(userConfig ? {} : { plugins: ['-*', 'opencode.*'] }),
+    }),
   };
 }
 
@@ -430,8 +480,9 @@ export const ACP_AGENTS: Record<AcpProvider, AcpAgent> = {
     },
     // --pure: no plugins, the user's own included, for the same reason.
     // OpenCode 2 has no --pure (it prints its help and exits instead of
-    // serving), so there the `plugins` rule in opencodeEnv does it.
-    args: (run) => ((opencodeMajor(run?.binary) ?? 1) >= 2 ? ['acp'] : ['acp', '--pure']),
+    // serving), so there the `plugins` rule in opencodeEnv does it. Both
+    // keep plugins enabled when the runner user opts in for a normal session.
+    args: (run) => ((run?.opencodeUserConfig && !run.noTools) || (opencodeMajor(run?.binary) ?? 1) >= 2 ? ['acp'] : ['acp', '--pure']),
     // OpenCode 1 imports a folder's .opencode/plugins/*.js, running its
     // top-level code, even with --pure and the folder's config off (tried on
     // 1.19.5, 17 Nov 2026). 2 doesn't. So unless the thread may run anything
@@ -455,10 +506,11 @@ export const ACP_AGENTS: Record<AcpProvider, AcpAgent> = {
     findBinary({ explicit, home, pathEnv }) {
       if (explicit) return path.isAbsolute(explicit) && isExecutableFile(explicit) ? explicit : undefined;
       const candidates = [path.join(home, '.local', 'bin', 'cursor-agent'), onPath('cursor-agent', pathEnv), path.join(home, '.local', 'bin', 'agent'), onPath('agent', pathEnv)];
-      return candidates.find((f): f is string => Boolean(f) && isExecutableFile(f!) && isCursorBinary(f!));
+      return candidates.find((f): f is string => f !== undefined && isExecutableFile(f) && isCursorBinary(f)) ?? windowsCursorBinary();
     },
-    args: () => ['acp'],
+    args: (run) => cursorCommandArgs(run?.binary, ['acp']),
     updateArgs: ['update'],
+    commandArgs: cursorCommandArgs,
     // Nothing to set: the mode does the job. See modeFor.
     env: () => ({}),
     identifies: (init) => Boolean(init.authMethods?.some((m) => m.id === 'cursor_login')) || /cursor/i.test(init.agentInfo?.name ?? ''),

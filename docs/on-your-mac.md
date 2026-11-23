@@ -807,9 +807,12 @@ File references are where to look.
 - Whether `~/.opencode/bin/opencode`, an
   `opencode` or `cursor-agent` on your PATH, `~/.local/bin/cursor-agent` and
   `~/.local/bin/agent` exist and where they really lead, and whether
-  `~/.cursor/cli-config.json` exists (never opened). OpenCode itself reads
-  `~/.config/opencode` and, as it does anywhere, your `~/.claude/skills`; a
-  folder's own OpenCode config and plugins are turned off.
+  `~/.cursor/cli-config.json` exists (never opened). On Windows, the runner
+  also checks `%LOCALAPPDATA%\cursor-agent\versions` for Cursor's bundled CLI.
+  OpenCode gets a temporary config directory by default. Set
+  `opencodeUserConfig` in `runner.json` to let normal OpenCode sessions and
+  model listing load your own config and plugins. Project config stays off.
+  See [ACP agents](protocol/settings.md#acp-agents) for what this trusts.
 - Whether `~/.local/bin/grok`, `~/.grok/bin/grok` or a `grok` on your PATH
   exists and where it really leads, and whether `~/.grok/auth.json` exists
   (never opened). Grok itself reads `~/.grok`, and as it does anywhere your

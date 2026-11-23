@@ -1570,8 +1570,10 @@ account suspended, so that risk is yours. Every tool it uses asks Threadbear
 first, and reads inside the thread's folder go ahead.
 Everything the agent wants to do comes through Threadbear first: on Ask and
 Plan first you get the usual cards, Auto behaves like Ask, and Full access
-goes ahead without them. A folder's own OpenCode config and plugins aren't
-read in these threads. Cursor can't be told to always ask, so its Ask, Auto
+goes ahead without them. OpenCode's project config stays off. If you trust
+your own OpenCode config and plugins, set `"opencodeUserConfig": true` in
+`runner.json` to load them in normal OpenCode sessions. Cursor can't be told
+to always ask, so its Ask, Auto
 and Plan first threads run in its read-only modes and can't change
 anything; to let Cursor change files, use Full access. Grok's own settings
 (including your `~/.claude/settings.json`, which it reads) can tell it to
