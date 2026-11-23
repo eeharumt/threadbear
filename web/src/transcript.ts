@@ -24,7 +24,7 @@ export type Transcript = { messages: Row[]; images: Picture[]; hasMore: boolean;
 
 export function useTranscript(token: string, threadId: string): Transcript | undefined {
   const convex = useConvex();
-  // notes: the lines a thread writes when its login runs out (API 79).
+  // Include the runner's notes, such as replies to /model (API 79).
   const tail = useLiveQuery(api.phone.messages, { token, threadId, limit: TAIL, tools: true, noImages: true, notes: true });
   const [held, setHeld] = useState<Held<Row>>();
   const heldRef = useRef<Held<Row>>(undefined);

@@ -864,6 +864,10 @@ File references are where to look.
 
 ## Who it talks to
 
+With sync on, replies the runner writes to slash commands such as `/model`
+are scrubbed and sent to your Convex deployment as private notes. Shared
+links leave them out.
+
 | Service | Whose | What goes there |
 |---|---|---|
 | A browser picture's URL | the site you drag from | When a picture dropped on the GPUI composer offers only an HTTP or HTTPS URL, the app downloads it directly without browser cookies, credentials or a proxy (30-second timeout, at most 25 MB). Only public internet addresses outside this Mac and its directly connected networks are used, including after DNS lookups and redirects. It is staged privately until the runner imports it. |

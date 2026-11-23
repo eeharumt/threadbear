@@ -64,7 +64,7 @@ export const commandsPart = {
     // Settings changed here apply to the next turn, which is the one
     // that matters; this turn is the command's and is already over.
     turn.local = true;
-    const say = (text: string) => this.emit(st, { type: 'system.note', text }, turn.turnId);
+    const say = (text: string) => this.emit(st, { type: 'system.note', text, commandReply: true }, turn.turnId);
     const account = this.accounts.get(rec.accountId);
     try {
       switch (plan.kind) {

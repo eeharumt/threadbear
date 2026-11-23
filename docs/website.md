@@ -36,7 +36,8 @@ Built 28 Oct 2026 (thread 66935d23).
   its tile an orange dot while it's low on memory or disk. The sidebar and rail
   read `phone:wakes`, not the schedules. On a phone the rail is a tab bar, with Runners and Usage under
   More. The pencil beside the search starts a thread (`/new`, `phone:create`)
-  on the runner's default folder and login. And a
+  in the runner's default folder. Pick a model and its login under **Model**,
+  and an effort under **Effort**, or leave both on **Default**. And a
   thread whose finished turns fold to "Worked for 4m 12s" and the reply
   (`web/src/turns.ts`, a port of the iPhone's `Turns.fold`), with the
   pending approval, the end_turn card of asks or the done card's
@@ -46,7 +47,8 @@ Built 28 Oct 2026 (thread 66935d23).
   marks it seen.
 - It's a client of the phone's API (`convex/phone.ts`, docs/convex-backend.md
   section 6) and nothing else, so it sees exactly what the phone sees: the
-  text messages and one line per tool call, with no tool output, and only
+  text messages, quiet notes for runner replies to commands such as `/model`,
+  and one line per tool call, with no tool output, and only
   the images an agent showed Mike or a shared thread's. Everything
   it does is a `commands` row the runner applies.
 - Hosted by `@convex-dev/static-hosting` on the same Convex deployment.

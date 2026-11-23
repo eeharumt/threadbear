@@ -1234,8 +1234,6 @@ function rawChars(b: RawBody): number {
   return (b.text?.length ?? 0) + (b.reasoning?.length ?? 0) + (b.input ? JSON.stringify(b.input).length : 0) + (b.diffs ? JSON.stringify(b.diffs).length : 0);
 }
 
-// A persisted user.message or assistant.text as a message row; anything
-// else is undefined.
 // Scrubbed before it's cut, the one place a value could be split in two and
 // each half missed; everything is scrubbed again on the way up (this.post).
 export function toMessageDoc(threadId: string, e: PersistedEvent, scrub: (text: string) => string = (t) => t): MessageDoc | undefined {
@@ -1243,13 +1241,9 @@ export function toMessageDoc(threadId: string, e: PersistedEvent, scrub: (text: 
   // message.
   const turn = e.turnId ? { turn: e.turnId.slice(0, 8) } : {};
   if (e.type === 'tool.call') return { threadId, seq: e.seq, role: 'tool', text: toolLine(e, scrub), toolKind: e.kind, ...turn, at: e.ts };
-  // A login's note (the thread moved to another login, or waits for room),
-  // or an early Stop saving a message: without it a thread on the Pixel that changed login
-  // showed the limit's words on the Mac and then just carried on (13 Nov).
-  // The runner's own words, a line or two: a move to another provider
-  // also says which model takes over.
+  // Other system notes can contain local diagnostics and stay on the runner.
   if (e.type === 'system.note') {
-    const text = e.login || e.savedMessage ? scrub(e.text).trim().slice(0, NOTE_CHARS) : '';
+    const text = e.login || e.savedMessage || e.commandReply ? scrub(e.text).trim().slice(0, NOTE_CHARS) : '';
     return text ? { threadId, seq: e.seq, role: 'note', text, ...turn, at: e.ts } : undefined;
   }
   if (e.type === 'plan.proposed') {

@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { FakeAccounts, makeHarness, tick, withCodex } from '../helpers/fakes.ts';
 import { commandList, parseCommand, planCommand } from '../../src/slash-commands.ts';
 import { pickModel } from '../../src/runner/commands.ts';
+import { toMessageDoc } from '../../src/sync.ts';
 import { claudeCommands, commandScope } from '../../src/adapters/claude/adapter.ts';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -156,13 +157,18 @@ test('/model on a Codex thread changes the thread\'s model, with no CLI turn', a
   const s = h.codex.last;
   s.init('cx-1', 'gpt-6.1-sol');
   s.result();
-  h.runner.send(thread.id, '/model gpt-6-luna');
+  h.runner.send(thread.id, '/model gpt-6-luna', [], { origin: 'phone' });
   await tick();
   assert.equal(s.sent.length, 1, 'nothing sent to the CLI');
   assert.equal(h.runner.get(thread.id).model, 'gpt-6-luna');
   assert.deepEqual(s.models, ['gpt-6-luna']);
   const n = notes(h, thread.id);
   assert.ok(n.includes('This thread is on GPT-6-Luna from here.'), n.join('\n'));
+  const rows = h.events(thread.id).flatMap((event) => {
+    const row = toMessageDoc(thread.id, event, (text) => text.replaceAll('GPT-6-Luna', '[redacted]'));
+    return row?.role === 'note' ? [row.text] : [];
+  });
+  assert.deepEqual(rows, ['This thread is on [redacted] from here.']);
   assert.ok(!n.some((t) => /next turn/.test(t)), 'no "applies from the next turn" for its own turn');
   const done = h.events(thread.id).filter((e) => e.type === 'turn.completed');
   assert.equal(done.length, 2);

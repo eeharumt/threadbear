@@ -414,7 +414,7 @@ the mirror back as state. The Mac app doesn't use it.
 - **Messages.** Each persisted `user.message` and `assistant.text` goes
   up as a `messages` row (`threadId, seq, role, text, origin?, at`), text
   cut at 8,000 characters with a note; never a delta, with one row per tool
-  call (`role: "tool"`, one line), and one per `system.note` with `login` or `savedMessage`
+  call (`role: "tool"`, one line), and one per `system.note` with `login`, `savedMessage`, or `commandReply`
   (`role: "note"`, since backend API 78: a thread on another runner changed
   login and nothing on the Mac said so, 13 Nov 2026). `relay:remoteTail` and
   `relay:remoteMessages` give note rows to a runner that asks with
@@ -422,7 +422,7 @@ the mirror back as state. The Mac app doesn't use it.
   which plays them as `system.note` again. `phone:messages` gives them to an
   app that asks the same way (API 79: the iPhone app and the website draw
   them as the Mac does; one built before can't read the role). `phone:thread`,
-  the phone's search and the shared page leave them out: a note names logins. A note a
+  the phone's search and the shared page leave all note rows out. A note a
   backend from before 78 couldn't take waits on the runner and goes up once
   it can. No other note goes up. The mirror keeps every one, and each
   thread's whole history goes up once per deployment. A start sends what's

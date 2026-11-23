@@ -20,6 +20,17 @@ import path from 'node:path';
 
 test('phone reads review previews and submits a revision-checked answer through Convex', phoneReviewScenario);
 
+test('a slash command reply reaches the signed-in website and other runners as a note', async () => {
+  const { views, refused } = await threeWays((p) => {
+    p.say('Ready.');
+    p.endTurn({ needs: 'nothing' });
+    p.sendFromPhone('/model');
+  });
+  assert.deepEqual(refused, []);
+  assert.match(views.phone.notes.at(-1) ?? '', /^This thread is on /);
+  assert.deepEqual(views.relay.notes, views.phone.notes);
+});
+
 type Route = 'relay' | 'phone';
 type Field = 'needs' | 'asks' | 'next' | 'looseEnds' | 'review' | 'plans' | 'messages' | 'notes' | 'pictures' | 'failed' | 'origins';
 
