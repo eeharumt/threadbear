@@ -1,6 +1,8 @@
 import { isOnline, type RunnerRow } from './view-logic.ts';
 
-type ModelOption = { key: string; accountId: string; model: string; label: string; effortLevels: string[] };
+type ModelOption = { id: string; label: string; effortLevels: string[] };
+type AgentOption = { id: string; label: string; provider: string; email?: string; models: ModelOption[] };
+export type ThreadPick = { accountId: string; modelId: string; effort: string };
 
 const providerOrder = ['claude', 'codex'];
 const levelTitles = new Map([
@@ -17,31 +19,64 @@ export function defaultRunner(runners: (RunnerRow & { placed?: boolean; main?: b
   return (available.find((r) => r.placed) ?? available.find((r) => r.main))?.runnerId;
 }
 
-export function modelOptions(rows: unknown[] | undefined, runnerId: string | undefined): ModelOption[] {
-  if (!runnerId) return [];
-  // phone:accounts also accepts older rows without a model list.
-  const accounts = (rows ?? []).flatMap((row) => {
-    if (!row || typeof row !== 'object' || !('id' in row) || typeof row.id !== 'string' || !row.id ||
-        ('runnerId' in row && row.runnerId != null && row.runnerId !== runnerId) || !('models' in row) || !Array.isArray(row.models)) return [];
-    const title = 'title' in row && typeof row.title === 'string' ? row.title : row.id;
-    const provider = 'provider' in row && typeof row.provider === 'string' ? row.provider : 'claude';
-    const rank = providerOrder.indexOf(provider);
-    const models: unknown[] = row.models;
-    return [{ id: row.id, title, rank: rank < 0 ? providerOrder.length : rank, models }];
-  });
-  return accounts.sort((a, b) => a.rank - b.rank).flatMap((account) =>
-    account.models.flatMap((model) => {
-      if (!model || typeof model !== 'object' || !('id' in model) || typeof model.id !== 'string' || !model.id) return [];
-      const title = 'title' in model && typeof model.title === 'string' ? model.title : model.id;
-      const levels: unknown[] = 'effortLevels' in model && Array.isArray(model.effortLevels) ? model.effortLevels : [];
-      const effortLevels = levels.filter((level): level is string => typeof level === 'string' && levelTitles.has(level));
-      return [{ key: JSON.stringify([runnerId, account.id, model.id]), accountId: account.id, model: model.id, label: `${title} · ${account.title}`, effortLevels }];
-    }),
-  );
+function modelFromRow(model: unknown): ModelOption | undefined {
+  if (!model || typeof model !== 'object' || !('id' in model) || typeof model.id !== 'string' || !model.id) return undefined;
+  const title = 'title' in model && typeof model.title === 'string' ? model.title : model.id;
+  const levels: unknown[] = 'effortLevels' in model && Array.isArray(model.effortLevels) ? model.effortLevels : [];
+  const effortLevels = levels.filter((level): level is string => typeof level === 'string' && levelTitles.has(level));
+  return { id: model.id, label: title, effortLevels };
 }
 
-export function resolveChoices(options: ModelOption[], pick: { modelKey: string; effort: string }) {
-  const model = options.find((m) => m.key === pick.modelKey);
-  const efforts = model?.effortLevels ?? (options.length ? defaultLevels : []);
-  return { model, efforts, effort: efforts.includes(pick.effort) ? pick.effort : '' };
+export function agentOptions(rows: unknown[] | undefined, runnerId: string | undefined): AgentOption[] {
+  if (!runnerId) return [];
+  const accounts = (rows ?? []).flatMap((row) => {
+    if (!row || typeof row !== 'object' || !('id' in row) || typeof row.id !== 'string' || !row.id) return [];
+    if (!('runnerId' in row) || row.runnerId !== runnerId) return [];
+    const label = 'title' in row && typeof row.title === 'string' ? row.title : row.id;
+    const provider = 'provider' in row && typeof row.provider === 'string' ? row.provider : '';
+    const email = 'email' in row && typeof row.email === 'string' ? row.email.trim().toLowerCase() : undefined;
+    const rank = providerOrder.indexOf(provider);
+    const models: unknown[] = 'models' in row && Array.isArray(row.models) ? row.models : [];
+    const parsed = models.flatMap((m) => {
+      const option = modelFromRow(m);
+      return option ? [option] : [];
+    });
+    return [{ agent: { id: row.id, label, provider, email, models: parsed }, rank: rank < 0 ? providerOrder.length : rank }];
+  });
+  return accounts
+    .sort((a, b) => a.rank - b.rank || a.agent.label.localeCompare(b.agent.label))
+    .map(({ agent }) => agent);
+}
+
+export function modelGroups(models: ModelOption[]) {
+  const plain: ModelOption[] = [];
+  const byPrefix = new Map<string, ModelOption[]>();
+  for (const model of models) {
+    const slash = model.id.indexOf('/');
+    if (slash <= 0) {
+      plain.push(model);
+      continue;
+    }
+    const label = model.id.slice(0, slash);
+    const group = byPrefix.get(label);
+    if (group) group.push(model);
+    else byPrefix.set(label, [model]);
+  }
+  return { plain, groups: Array.from(byPrefix, ([label, models]) => ({ label, models })) };
+}
+
+function sameLogin(agents: AgentOption[], previous: AgentOption | undefined) {
+  if (!previous?.provider || !previous.email) return undefined;
+  // Account IDs belong to one runner (docs/protocol/settings.md, shared pools).
+  const matches = agents.filter((a) => a.provider === previous.provider && a.email === previous.email);
+  return matches.length === 1 ? matches[0] : undefined;
+}
+
+export function resolveChoices(agents: AgentOption[], pick: ThreadPick, previousAgents?: AgentOption[]) {
+  const previous = (previousAgents ?? agents).find((a) => a.id === pick.accountId);
+  const agent = previousAgents ? sameLogin(agents, previous) : previous;
+  const model = agent?.models.find((m) => m.id === pick.modelId);
+  const efforts = model?.effortLevels ?? (agents.some((a) => a.models.length) ? defaultLevels : []);
+  const effort = (!pick.accountId || agent) && efforts.includes(pick.effort) ? pick.effort : '';
+  return { agent, model, efforts, pick: { accountId: agent?.id ?? '', modelId: model?.id ?? '', effort } };
 }

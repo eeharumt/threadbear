@@ -36,13 +36,12 @@ Built 28 Oct 2026 (thread 66935d23).
   its tile an orange dot while it's low on memory or disk. The sidebar and rail
   read `phone:wakes`, not the schedules. On a phone the rail is a tab bar, with Runners and Usage under
   More. The pencil beside the search starts a thread (`/new`, `phone:create`)
-  in the runner's default folder. Pick a model and its login under **Model**,
-  and an effort under **Effort**, or leave both on **Default**. And a
-  thread whose finished turns fold to "Worked for 4m 12s" and the reply
-  (`web/src/turns.ts`, a port of the iPhone's `Turns.fold`), with the
-  pending approval, the end_turn card of asks or the done card's
-  follow-ups joined to the composer. Return sends; Shift-Return is a new
-  line. The header's Share button and ... menu (Copy link, Star,
+  in the runner's default folder. Pick a login under **Agent** to see its
+  models under **Model**, or leave **Agent** on **Default**. Finished turns
+  fold to "Worked for 4m 12s" and the reply (`web/src/turns.ts`, a port of
+  the iPhone's `Turns.fold`). The pending approval, the end_turn card of
+  asks or the done card's follow-ups appear by the composer. Return sends;
+  Shift-Return is a new line. The header's Share button and ... menu (Copy link, Star,
   Hibernate or Wake, Archive or Bring back) do the rest. Opening a thread
   marks it seen.
 - It's a client of the phone's API (`convex/phone.ts`, docs/convex-backend.md

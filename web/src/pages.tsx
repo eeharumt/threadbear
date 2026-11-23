@@ -7,7 +7,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { useMutation } from 'convex/react';
 import { api } from '../../convex/_generated/api';
 import { useLiveQuery, usePageAway } from './live';
-import { defaultRunner, effortTitle, modelOptions, resolveChoices } from './new-thread-choices';
+import { agentOptions, defaultRunner, effortTitle, modelGroups, resolveChoices, type ThreadPick } from './new-thread-choices';
 import { useInbox } from './inbox';
 import { MessageText } from './messages';
 import { CommandNote, useCommand } from './command-state';
@@ -704,7 +704,7 @@ export function NewThread({ token }: { token: string }) {
   const accounts = useLiveQuery(api.phone.accounts, { token });
   const [text, setText] = useState('');
   const [runnerId, setRunnerId] = useState('');
-  const [pick, setPick] = useState({ modelKey: '', effort: '' });
+  const [pick, setPick] = useState<ThreadPick & { runnerId?: string }>({ accountId: '', modelId: '', effort: '' });
   // The text stays until the runner has made the thread, so a failure keeps it.
   const cmd = useCommand(token);
   // The runner makes the thread, so it has an id once it's taken the command.
@@ -717,28 +717,27 @@ export function NewThread({ token }: { token: string }) {
   const automatic = defaultRunner(runners ?? [], now);
   const explicit = available.find((r) => r.runnerId === runnerId)?.runnerId;
   const target = explicit ?? automatic;
-  const options = modelOptions(accounts, target);
-  const { model, effort, efforts } = resolveChoices(options, pick);
-  const modelKey = model?.key ?? '';
+  const agents = agentOptions(accounts, target);
+  const previousAgents = pick.runnerId === target ? undefined : agentOptions(accounts, pick.runnerId);
+  const { agent, efforts, pick: resolved } = resolveChoices(agents, pick, previousAgents);
+  const { accountId, modelId, effort } = resolved;
   if (runnerId && !explicit) setRunnerId('');
-  if (pick.modelKey !== modelKey || pick.effort !== effort) setPick({ modelKey, effort });
-  const changeRunner = (id: string) => {
-    const next = modelOptions(accounts, id || automatic);
-    const same = model && (next.find((m) => m.model === model.model && m.accountId === model.accountId) ?? next.find((m) => m.model === model.model));
-    setRunnerId(id);
-    setPick({ modelKey: same?.key ?? '', effort: resolveChoices(next, { modelKey: same?.key ?? '', effort }).effort });
-  };
+  if (pick.runnerId !== target || pick.accountId !== accountId || pick.modelId !== modelId || pick.effort !== effort) {
+    setPick({ runnerId: target, ...resolved });
+  }
+  const { plain, groups } = modelGroups(agent?.models ?? []);
   const submit = async () => {
     const body = text.trim();
     if (!body) return;
     // Keep the backend's default routing unless the user picked a runner or
     // the settings need the runner that supplied their model list.
-    const destination = explicit ?? (model || effort ? target : undefined);
+    const destination = explicit ?? (accountId || effort ? target : undefined);
     await cmd.run(() => create({
       token,
       text: body,
       ...(destination ? { runnerId: destination } : {}),
-      ...(model ? { accountId: model.accountId, model: model.model } : {}),
+      ...(accountId ? { accountId } : {}),
+      ...(modelId ? { model: modelId } : {}),
       ...(effort ? { effort } : {}),
     }), undefined);
   };
@@ -779,27 +778,59 @@ export function NewThread({ token }: { token: string }) {
             />
             <div className="tools-row">
               {available.length > 1 || (available.length === 1 && !automatic) || explicit ? (
-                <select value={explicit ?? ''} disabled={cmd.busy} onChange={(e) => changeRunner(e.target.value)} aria-label="Runner" title="Which runner it starts on">
-                  <option value="">Automatic runner</option>
-                  {available.map((r) => (
-                    <option key={r.runnerId} value={r.runnerId}>
-                      {r.name}
-                    </option>
-                  ))}
-                </select>
+                <label className="pick-label">
+                  Runner
+                  <select value={explicit ?? ''} disabled={cmd.busy} onChange={(e) => setRunnerId(e.target.value)} title="Which runner it starts on">
+                    <option value="">Automatic runner</option>
+                    {available.map((r) => (
+                      <option key={r.runnerId} value={r.runnerId}>
+                        {r.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
               ) : null}
-              {options.length ? (
+              {agents.length ? (
                 <>
-                  <label>
-                    Model{' '}
-                    <select value={modelKey} disabled={cmd.busy} onChange={(e) => setPick({ modelKey: e.target.value, effort })} title="Which model and login it starts on">
+                  <label className="pick-label">
+                    Agent
+                    <select
+                      value={accountId}
+                      disabled={cmd.busy}
+                      onChange={(e) => setPick({ runnerId: target, accountId: e.target.value, modelId: '', effort })}
+                      title="Which agent it starts on"
+                    >
                       <option value="">Default</option>
-                      {options.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
+                      {agents.map((a) => (
+                        <option key={a.id} value={a.id}>{a.label}</option>
+                      ))}
                     </select>
                   </label>
-                  <label>
-                    Effort{' '}
-                    <select value={effort} disabled={cmd.busy || !efforts.length} onChange={(e) => setPick({ modelKey, effort: e.target.value })} title="How much effort the model uses">
+                  <label className="pick-label">
+                    Model
+                    <select
+                      value={modelId}
+                      disabled={cmd.busy || !agent?.models.length}
+                      onChange={(e) => setPick({ runnerId: target, accountId, modelId: e.target.value, effort })}
+                      title="Which model it starts on"
+                    >
+                      <option value="">Default</option>
+                      {plain.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+                      {groups.map((g) => (
+                        <optgroup key={g.label} label={g.label}>
+                          {g.models.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+                        </optgroup>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="pick-label">
+                    Effort
+                    <select
+                      value={effort}
+                      disabled={cmd.busy || !efforts.length}
+                      onChange={(e) => setPick({ runnerId: target, accountId, modelId, effort: e.target.value })}
+                      title="How much effort the model uses"
+                    >
                       <option value="">Default</option>
                       {efforts.map((level) => <option key={level} value={level}>{effortTitle(level)}</option>)}
                     </select>
