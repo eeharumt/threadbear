@@ -22,7 +22,7 @@
         android:allowBackup="false"
         android:enableOnBackInvokedCallback="true"
         android:icon="@mipmap/ic_launcher"
-        android:label="Threadbear"
+        android:label="${appLabel}"
         android:supportsRtl="true"
         android:theme="@style/Theme.Threadbear">
 

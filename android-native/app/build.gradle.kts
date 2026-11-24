@@ -58,6 +58,12 @@ val releaseKeyPassword: String? = System.getenv("THREADBEAR_KEYSTORE_PASSWORD")
 /** Where the app looks for a newer release: this repo, or a fork's own (GITHUB_REPOSITORY in Actions). */
 val updateRepo: String = System.getenv("GITHUB_REPOSITORY") ?: "mikecann/threadbear"
 
+/**
+ * A fork's own build, beside the store's app rather than over it:
+ * -PthreadbearFork=<name> adds .<name> to its id and the name to its label.
+ */
+val forkName: String? = (findProperty("threadbearFork") as String?)?.takeIf { Regex("^[a-z][a-z0-9]*$").matches(it) }
+
 android {
     namespace = "com.mikerosoft.threadbear.android"
     compileSdk = 37
@@ -65,6 +71,8 @@ android {
     defaultConfig {
         // Mike's own, clearly apart from Keith's wrapper (com.tinkerware.threadbear).
         applicationId = "com.mikerosoft.threadbear.android"
+        forkName?.let { applicationIdSuffix = ".$it" }
+        manifestPlaceholders["appLabel"] = forkName?.let { "Threadbear $it" } ?: "Threadbear"
         minSdk = 29
         targetSdk = 36
         // 20261112 for release/2026-11-12; 1 for a local build.
