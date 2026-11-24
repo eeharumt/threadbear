@@ -5,6 +5,10 @@ type AgentOption = { id: string; label: string; provider: string; email?: string
 export type ThreadPick = { accountId: string; modelId: string; effort: string };
 
 const providerOrder = ['claude', 'codex'];
+// As runner/src/providers.ts names them.
+const providerNames = new Map([
+  ['claude', 'Claude'], ['codex', 'Codex'], ['cursor', 'Cursor'], ['opencode', 'OpenCode'], ['grok', 'Grok'], ['antigravity', 'Gemini'],
+]);
 const levelTitles = new Map([
   ['low', 'Low'], ['medium', 'Medium'], ['high', 'High'], ['xhigh', 'Extra high'], ['max', 'Max'], ['ultra', 'Ultra'],
 ]);
@@ -27,6 +31,17 @@ function modelFromRow(model: unknown): ModelOption | undefined {
   return { id: model.id, label: title, effortLevels };
 }
 
+function agentLabel(agent: AgentOption, agents: AgentOption[]) {
+  const name = providerNames.get(agent.provider);
+  if (!name) return agent.label;
+  const peers = agents.filter((a) => a.provider === agent.provider);
+  if (peers.length === 1) return name;
+  if (agent.label === name) return `${name} · ${agent.id}`;
+  // A Codex title already starts with its name (runner/src/accounts.ts, codexTitle).
+  const login = agent.label.startsWith(`${name} · `) ? agent.label : `${name} · ${agent.label}`;
+  return peers.some((a) => a.id !== agent.id && a.label === agent.label) ? `${login} (${agent.id})` : login;
+}
+
 export function agentOptions(rows: unknown[] | undefined, runnerId: string | undefined): AgentOption[] {
   if (!runnerId) return [];
   const accounts = (rows ?? []).flatMap((row) => {
@@ -43,7 +58,9 @@ export function agentOptions(rows: unknown[] | undefined, runnerId: string | und
     });
     return [{ agent: { id: row.id, label, provider, email, models: parsed }, rank: rank < 0 ? providerOrder.length : rank }];
   });
+  const agents = accounts.map(({ agent }) => agent);
   return accounts
+    .map(({ agent, rank }) => ({ agent: { ...agent, label: agentLabel(agent, agents) }, rank }))
     .sort((a, b) => a.rank - b.rank || a.agent.label.localeCompare(b.agent.label))
     .map(({ agent }) => agent);
 }

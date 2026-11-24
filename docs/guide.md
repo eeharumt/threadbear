@@ -2008,11 +2008,12 @@ terminal command setup used to print still works too:
 
     swift ios/scripts/pair-qr.swift --prod --url <your deployment URL>
 
-On the signed-in website, open **New thread** and pick a login under
-**Agent** to see its models. Leave **Agent** on **Default** to use the
-runner's usual selection. Pick an effort if the model offers one. Replies
-from the runner to commands such as `/model` appear as short notes in the
-thread.
+On the signed-in website, open **New thread** and pick an agent
+(Claude, Codex and so on) under **Agent** to see its models. If the runner has
+several logins for one agent, each shows which login it is. Leave **Agent**
+on **Default** to use the runner's usual selection. Pick an effort if the
+model offers one. Replies from the runner to commands such as `/model` appear
+as short notes in the thread.
 
 If you have them on, notifications reach your phone only while you're away
 from the Mac by default. Threadbear counts you as at the Mac when the app is open and you've

@@ -31,9 +31,9 @@ test('agents follow the runner and include accounts without models', () => {
   assert.deepEqual(
     agents.map((a) => [a.id, a.label, a.models.map((m) => m.id)]),
     [
-      ['cc', 'Claude', ['opus', 'claude/region/sonnet', 'claude/haiku']],
-      ['alt', 'Other Claude', ['opus']],
-      ['plain', 'Plain only', ['solo']],
+      ['cc', 'Claude · cc', ['opus', 'claude/region/sonnet', 'claude/haiku']],
+      ['alt', 'Claude · Other Claude', ['opus']],
+      ['plain', 'Claude · Plain only', ['solo']],
       ['cx', 'Codex', ['astra']],
       ['cursor', 'Cursor', ['auto']],
       ['legacy', 'legacy', []],
@@ -41,6 +41,35 @@ test('agents follow the runner and include accounts without models', () => {
   );
   assert.deepEqual(agentOptions(accounts, 'missing'), []);
   assert.deepEqual(agentOptions(accounts, undefined), []);
+});
+
+test('agents are named for their provider, with the login only when several share it', () => {
+  const row = (id: string, provider: string, title: string) => ({ id, runnerId: 'one', provider, title });
+  const labels = (...rows: unknown[]) => agentOptions(rows, 'one').map((a) => a.label);
+  assert.deepEqual(
+    labels(
+      row('cc', 'claude', 'me@example.test'),
+      row('cx', 'codex', 'Codex · me@example.test'),
+      row('cu', 'cursor', 'me@example.test'),
+      row('oc', 'opencode', 'OpenCode account'),
+      row('new', 'future', 'Future agent'),
+      { ...row('elsewhere', 'claude', 'other@example.test'), runnerId: 'two' },
+    ),
+    ['Claude', 'Codex', 'Cursor', 'Future agent', 'OpenCode'],
+  );
+  assert.deepEqual(
+    labels(
+      row('a', 'claude', 'a@example.test'),
+      row('b', 'claude', 'b@example.test'),
+      row('x', 'codex', 'Codex · x@example.test'),
+      row('y', 'codex', 'Codex · y@example.test'),
+    ),
+    ['Claude · a@example.test', 'Claude · b@example.test', 'Codex · x@example.test', 'Codex · y@example.test'],
+  );
+  assert.deepEqual(
+    labels(row('main', 'claude', 'same@example.test'), row('spare', 'claude', 'same@example.test')),
+    ['Claude · same@example.test (main)', 'Claude · same@example.test (spare)'],
+  );
 });
 
 test('models are scoped to the chosen agent', () => {
