@@ -219,7 +219,9 @@ for them to be built from source in the recipe.
    and New link. The link is `<site>/s/<slug>`, the site from `phone:me`'s
    `site`, else a cloud deployment's `.convex.site` twin.
 4. New thread (the bar's pencil): text with photos and dictation, runner,
-   model and effort as the iPhone offers; it closes once the backend has it,
+   agent, model and effort (the agent and its own models as the website
+   offers them, `web/src/new-thread-choices.ts`; the iPhone has no agent
+   picker); it closes once the backend has it,
    a Starting row stands in, and the thread opens if it starts within a minute.
 5. Settings (the bar's menu): paired server, phone, token expiry, runners
    and their order (drag by the handles), Notify me once push is on, the

@@ -2008,7 +2008,7 @@ terminal command setup used to print still works too:
 
     swift ios/scripts/pair-qr.swift --prod --url <your deployment URL>
 
-On the signed-in website, open **New thread** and pick an agent
+On the signed-in website or the Android app, open **New thread** and pick an agent
 (Claude, Codex and so on) under **Agent** to see its models. If the runner has
 several logins for one agent, each shows which login it is. Leave **Agent**
 on **Default** to use the runner's usual selection. Pick an effort if the

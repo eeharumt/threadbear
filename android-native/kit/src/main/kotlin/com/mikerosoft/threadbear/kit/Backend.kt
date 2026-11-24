@@ -248,6 +248,7 @@ class PhoneBackend(private val transport: ConvexTransport, private val token: St
     /** `settings` (backend API 20 for an effort): the model and effort it starts on; `images` (API 18) its photos. */
     suspend fun create(text: String, runnerId: String?, cwd: String?, images: List<String>, settings: NewThreadSettings): String {
         val a = mutableListOf<Pair<String, JsonElement>>("text" to JsonPrimitive(text))
+        settings.accountId?.let { a += "accountId" to JsonPrimitive(it) }
         settings.model?.let { a += "model" to JsonPrimitive(it) }
         settings.effort?.let { a += "effort" to JsonPrimitive(it) }
         // Only when there are some: a backend before API 18 refuses the field.

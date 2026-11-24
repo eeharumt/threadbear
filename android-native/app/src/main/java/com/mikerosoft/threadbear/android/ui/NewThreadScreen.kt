@@ -38,9 +38,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -49,6 +49,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mikerosoft.threadbear.android.LocalModel
@@ -61,17 +63,17 @@ import com.mikerosoft.threadbear.android.upload
 import com.mikerosoft.threadbear.kit.BackendApi
 import com.mikerosoft.threadbear.kit.NewThreadChoices
 import com.mikerosoft.threadbear.kit.NewThreadSettings
+import com.mikerosoft.threadbear.kit.ThreadPick
 import java.time.Instant
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 
 /**
  * A new thread from the phone (the iPhone's NewThreadView). It starts in
  * the runner's default folder (Mike didn't want a folder picker on the
- * phone, 31 Oct); the runner, model and effort can be picked, and the
- * runner picks a login with room for them. The runner starts on the first
+ * phone, 31 Oct); the runner, agent, model and effort can be picked, and
+ * with no agent the runner picks a login. The runner starts on the first
  * one online in Mike's order, so the Mac asleep doesn't leave the phone
  * nowhere to start one (6 Nov).
  *
@@ -114,8 +116,7 @@ fun NewThreadScreen(close: () -> Unit) {
 
     /** Null until the runners are in, then the first online in Mike's order. */
     var runnerId by rememberSaveable { mutableStateOf(retry?.runnerId) }
-    var modelId by rememberSaveable { mutableStateOf(retry?.modelId) }
-    var effort by rememberSaveable { mutableStateOf(retry?.effort) }
+    var pick by rememberSaveable(stateSaver = pickSaver) { mutableStateOf(retry?.pick ?: ThreadPick()) }
     /**
      * From the tap on Start until the command's queued. Without it Start
      * looks dead (and can be tapped again, for a second thread) while the
@@ -124,10 +125,16 @@ fun NewThreadScreen(close: () -> Unit) {
     var starting by remember { mutableStateOf<Job?>(null) }
     val focus = remember { FocusRequester() }
 
-    // The models a new thread on this runner can start on; empty hides the
-    // pickers, as an older backend would turn an effort down.
-    val models = if (api >= BackendApi.MODELS) NewThreadChoices.models(accounts, if (canChooseRunner) runnerId else null) else emptyList()
-    val chosenModel = models.firstOrNull { it.id == modelId }
+    // Whose agents are on offer. None hides the pickers: an older backend
+    // would turn an effort down.
+    val target = when {
+        api < BackendApi.MODELS -> null
+        canChooseRunner -> runnerId
+        else -> (NewThreadChoices.runner(runners, now) ?: runners.singleOrNull())?.runnerId
+    }
+    val agents = NewThreadChoices.agents(accounts, target)
+    val resolved = NewThreadChoices.resolve(accounts, target, pick)
+    val latestResolved by rememberUpdatedState(resolved)
     val chosenRunner = runners.firstOrNull { it.runnerId == runnerId }
     // With a runner picked, whether that one's asleep; otherwise whether they all are.
     val offline = if (canChooseRunner && chosenRunner != null) NewThreadChoices.offlineText(chosenRunner, now)
@@ -152,27 +159,11 @@ fun NewThreadScreen(close: () -> Unit) {
         if (!canChooseRunner) runnerId = null
         else if (runnerId == null || runners.none { it.runnerId == runnerId }) runnerId = NewThreadChoices.runner(runners, Instant.now())?.runnerId
     }
-    // Changes only, not the first value: a retried draft keeps its picks.
-    // Read by the effects below as they are now, not as they were when the effects began.
-    val latestAccounts by rememberUpdatedState(accounts)
-    val latestApi by rememberUpdatedState(api)
-    val latestChoosing by rememberUpdatedState(canChooseRunner)
-    fun modelsOn(runner: String?) =
-        if (latestApi >= BackendApi.MODELS) NewThreadChoices.models(latestAccounts, if (latestChoosing) runner else null) else emptyList()
-    LaunchedEffect(Unit) {
-        snapshotFlow { modelId }.drop(1).collect { id ->
-            // Codex's Ultra on a Claude model, say: back to the model's own.
-            if (!NewThreadChoices.keeps(effort, modelsOn(runnerId).firstOrNull { it.id == id })) effort = null
-        }
-    }
-    LaunchedEffect(Unit) {
-        snapshotFlow { runnerId }.drop(1).collect { runner ->
-            val offered = modelsOn(runner)
-            // A model this runner has no login for: back to its default.
-            if (modelId != null && offered.none { it.id == modelId }) modelId = null
-            // No pickers on it (its logins aren't in yet): its own effort too.
-            if (offered.isEmpty()) effort = null
-        }
+    // The pick as it stands on this runner is kept, so one it couldn't have
+    // doesn't come back with the next. Not while the logins are still coming
+    // in: a retried draft's pick waits for them.
+    LaunchedEffect(target, agents.isEmpty(), resolved.pick) {
+        if (target != null && agents.isNotEmpty()) pick = resolved.pick
     }
 
     fun start() {
@@ -189,8 +180,11 @@ fun NewThreadScreen(close: () -> Unit) {
                 // API version came in as Start was tapped).
                 if (canChooseRunner && runnerId == null) runnerId = NewThreadChoices.runner(runners, Instant.now())?.runnerId
                 // Taken once: the pickers can still change while the request goes.
-                val draft = NewThreadDraft(typed, photos, if (canChooseRunner) runnerId else null, modelId, effort)
-                val commandId = backend.create(message, draft.runnerId, null, images, NewThreadSettings(draft.modelId, draft.effort))
+                // What's showing is what goes, on the runner that offered it.
+                val chosen = latestResolved.pick
+                val destination = if (canChooseRunner) runnerId else chosen.runnerId.takeIf { chosen.accountId != null || chosen.effort != null }
+                val draft = NewThreadDraft(typed, photos, destination, chosen)
+                val commandId = backend.create(message, destination, null, images, NewThreadSettings(chosen.modelId, chosen.effort, chosen.accountId))
                 sent(photos)
                 model.shell.started(commandId, message, draft.runnerId, photos.size, draft)
                 close()
@@ -254,7 +248,7 @@ fun NewThreadScreen(close: () -> Unit) {
                 dictation.problem?.let { DictationNote(it, Modifier.padding(bottom = 8.dp)) }
                 if (photosOn && (box.photos.isNotEmpty() || box.adding > 0)) PhotoStrip(box, Modifier.padding(top = 4.dp, bottom = 10.dp), enabled = !busy)
             }
-            if (canChooseRunner || models.isNotEmpty()) {
+            if (canChooseRunner || agents.isNotEmpty()) {
                 Spacer(Modifier.height(16.dp))
                 Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(colors.surfaceContainer)) {
                     if (canChooseRunner) {
@@ -263,12 +257,22 @@ fun NewThreadScreen(close: () -> Unit) {
                             runners.map { r -> r.runnerId to (if (r.isOnline(now)) r.name else "${r.name}, offline") }
                         PickerRow("Runner", options, runnerId) { runnerId = it }
                     }
-                    if (models.isNotEmpty()) {
+                    if (agents.isNotEmpty()) {
+                        val chosen = resolved.pick
                         if (canChooseRunner) HorizontalDivider(Modifier.padding(start = 16.dp), color = colors.outlineVariant)
-                        PickerRow("Model", listOf<Pair<String?, String>>(null to "Default") + models.map { it.id to it.title }, modelId) { modelId = it }
+                        PickerRow("Agent", DEFAULT + agents.map { it.id to it.label }, chosen.accountId) { pick = chosen.copy(accountId = it, modelId = null) }
                         HorizontalDivider(Modifier.padding(start = 16.dp), color = colors.outlineVariant)
-                        val efforts = NewThreadChoices.efforts(chosenModel)
-                        PickerRow("Effort", listOf<Pair<String?, String>>(null to "Default") + efforts.map { it to NewThreadChoices.effortTitle(it) }, effort) { effort = it }
+                        val models = NewThreadChoices.modelGroups(resolved.agent?.models.orEmpty())
+                        PickerRow(
+                            "Model", DEFAULT + models.plain.map { it.id to it.title }, chosen.modelId,
+                            groups = models.groups.map { (name, list) -> name to list.map { it.id to it.title } },
+                            enabled = !resolved.agent?.models.isNullOrEmpty(),
+                        ) { pick = chosen.copy(modelId = it) }
+                        HorizontalDivider(Modifier.padding(start = 16.dp), color = colors.outlineVariant)
+                        PickerRow(
+                            "Effort", DEFAULT + resolved.efforts.map { it to NewThreadChoices.effortTitle(it) }, chosen.effort,
+                            enabled = resolved.efforts.isNotEmpty(),
+                        ) { pick = chosen.copy(effort = it) }
                     }
                 }
             }
@@ -294,29 +298,55 @@ private fun LabelButton(text: String, icon: ImageVector, enabled: Boolean, onCli
     }
 }
 
-/** One picker: its name, what's chosen, and a menu of the rest. */
+private val DEFAULT = listOf<Pair<String?, String>>(null to "Default")
+
+private val pickSaver = listSaver<ThreadPick, String?>(
+    save = { listOf(it.runnerId, it.accountId, it.modelId, it.effort) },
+    restore = { ThreadPick(it[0], it[1], it[2], it[3]) },
+)
+
+/** One picker: its name, what's chosen, and a menu of the rest, any groups under their names. */
 @Composable
-private fun PickerRow(label: String, options: List<Pair<String?, String>>, selected: String?, pick: (String?) -> Unit) {
+private fun PickerRow(
+    label: String,
+    options: List<Pair<String?, String>>,
+    selected: String?,
+    groups: List<Pair<String, List<Pair<String?, String>>>> = emptyList(),
+    enabled: Boolean = true,
+    pick: (String?) -> Unit,
+) {
     var open by remember { mutableStateOf(false) }
-    val title = options.firstOrNull { it.first == selected }?.second ?: options.firstOrNull()?.second ?: ""
+    val title = (options + groups.flatMap { it.second }).firstOrNull { it.first == selected }?.second ?: options.firstOrNull()?.second ?: ""
+    val signals = LocalSignals.current
     Box {
         Row(
-            Modifier.fillMaxWidth().clickable { open = true }.padding(horizontal = 16.dp, vertical = 14.dp),
+            Modifier.fillMaxWidth().clickable(enabled = enabled) { open = true }.padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(label, style = MaterialTheme.typography.bodyLarge)
-            Spacer(Modifier.weight(1f))
-            Text(title, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+            Text(label, style = MaterialTheme.typography.bodyLarge, color = if (enabled) MaterialTheme.colorScheme.onSurface else signals.faint)
+            Spacer(Modifier.width(16.dp))
+            Text(
+                title, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.End, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                color = if (enabled) MaterialTheme.colorScheme.onSurfaceVariant else signals.faint,
+            )
             Spacer(Modifier.width(6.dp))
-            Icon(Line.ChevronDown, null, Modifier.size(14.dp), tint = LocalSignals.current.faint)
+            Icon(Line.ChevronDown, null, Modifier.size(14.dp), tint = signals.faint)
         }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            for ((value, name) in options) {
-                DropdownMenuItem(
-                    text = { Text(name) },
-                    trailingIcon = { if (value == selected) Icon(Line.Check, null, Modifier.size(16.dp), tint = LocalSignals.current.accent) },
-                    onClick = { open = false; pick(value) },
-                )
+            @Composable
+            fun items(list: List<Pair<String?, String>>) {
+                for ((value, name) in list) {
+                    DropdownMenuItem(
+                        text = { Text(name) },
+                        trailingIcon = { if (value == selected) Icon(Line.Check, null, Modifier.size(16.dp), tint = signals.accent) },
+                        onClick = { open = false; pick(value) },
+                    )
+                }
+            }
+            items(options)
+            for ((name, list) in groups) {
+                Text(name, Modifier.padding(horizontal = 12.dp, vertical = 8.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                items(list)
             }
         }
     }

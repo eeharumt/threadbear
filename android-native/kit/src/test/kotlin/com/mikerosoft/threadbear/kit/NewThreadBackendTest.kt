@@ -13,13 +13,14 @@ class NewThreadBackendTest {
         b.create("hi", null, null, emptyList(), NewThreadSettings())
         // Nothing picked: an older backend refuses fields it doesn't know.
         assertEquals(setOf("token", "text"), t.calls.last().second.keys)
-        b.create("look [Picture 1]", "mac-mini", null, listOf("s1"), NewThreadSettings("opus", "high"))
+        b.create("look [Picture 1]", "mac-mini", null, listOf("s1"), NewThreadSettings("opus", "high", "cc"))
         val args = t.calls.last().second
         assertEquals("phone:create", t.calls.last().first)
         assertEquals("""["s1"]""", args["images"].toString())
         assertEquals("\"opus\"", args["model"].toString())
         assertEquals("\"high\"", args["effort"].toString())
         assertEquals("\"mac-mini\"", args["runnerId"].toString())
+        assertEquals("\"cc\"", args["accountId"].toString())
     }
 
     @Test fun accountsAreLive() = runTest {
