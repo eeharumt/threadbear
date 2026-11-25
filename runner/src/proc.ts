@@ -294,7 +294,15 @@ export class ProcessRegistry {
       if (created) {
         if ((await this.confirmStart(e, created)) !== false) return e.threadId;
         throw new StaleProcess(pid);
-      } else if (!(e.lstart || e.started) || sameStart(e, processInfo(pid))) return e.threadId;
+      } else if (!(e.lstart || e.started)) return e.threadId;
+      else {
+        // A recorded CLI whose start can't be read is no answer (the
+        // connection closes), not "some other process" (Codex's and
+        // Gemini's reviews of finding 175).
+        const info = processInfo(pid);
+        if (!info) throw new StaleProcess(pid);
+        if (sameStart(e, info)) return e.threadId;
+      }
     }
     return undefined;
   }

@@ -1334,6 +1334,8 @@ pub fn reference_id(url: &str) -> Option<(u64, u64)> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Media {
     Video,
+    /// A sound file, played in the pane's player with no picture.
+    Audio,
     Pdf,
     /// Read-only Quick Look thumbnail of an Office or iWork document.
     Office,
@@ -1343,12 +1345,18 @@ pub enum Media {
 /// movies. WebM, MKV and AVI aren't among them, so they open in their app.
 const VIDEO_EXTENSIONS: &[&str] = &["mp4", "m4v", "mov"];
 
+/// Sound files AVFoundation plays on every Mac this runs on. Ogg and Opus
+/// aren't among them, so they open in their app.
+const AUDIO_EXTENSIONS: &[&str] = &["wav", "mp3", "m4a", "aif", "aiff", "caf", "flac", "aac"];
+
 /// What a path's name says it is, for choosing the view. `decide_media`
 /// checks the real file before anything reads it.
 pub fn media_kind(path: &str) -> Option<Media> {
     let ext = extension(Path::new(path));
     if VIDEO_EXTENSIONS.contains(&ext.as_str()) {
         Some(Media::Video)
+    } else if AUDIO_EXTENSIONS.contains(&ext.as_str()) {
+        Some(Media::Audio)
     } else if ext == "pdf" {
         Some(Media::Pdf)
     } else if [
@@ -1429,6 +1437,7 @@ pub fn looks_like_at(
 ) -> bool {
     match kind {
         Media::Video => film_boxes(read_at, len),
+        Media::Audio => sound_file(read_at, len),
         Media::Office => {
             // Current Office, iWork and OpenDocument files are ZIP containers;
             // older Office files use the compound-document header. Quick Look
@@ -1536,6 +1545,44 @@ fn ftyp_is_a_films(read_at: &mut dyn FnMut(u64, &mut [u8]) -> usize, at: u64, si
         .all(|i| !PICTURE_BRANDS.iter().any(|b| brand(i) == *b))
 }
 
+/// The main brands of an MPEG-4 sound file (`.m4a`, an audiobook's `.m4b`).
+/// Plenty are written with a film's brand (`isom`, `mp42`), which pass too.
+const AUDIO_BRANDS: &[&[u8; 4]] = &[b"M4A ", b"M4B ", b"M4P ", b"F4A ", b"F4B "];
+
+/// Whether a file starts the way a sound file does: WAV's `RIFF`/`RF64` with
+/// `WAVE`, AIFF's `FORM` with `AIFF` or `AIFC`, Core Audio's `caff`, FLAC's
+/// `fLaC`, an MP3 or AAC's `ID3` tag or frame sync, or an MPEG-4's `ftyp`
+/// with a sound or film brand. The player only ever gets the file's bytes,
+/// so this is about not handing it something that's plainly another kind.
+fn sound_file(read_at: &mut dyn FnMut(u64, &mut [u8]) -> usize, len: u64) -> bool {
+    let mut head = [0u8; 12];
+    let n = read_at(0, &mut head);
+    if n < 4 || len < 4 {
+        return false;
+    }
+    let at = |i: usize, tag: &[u8; 4]| n >= i + 4 && &head[i..i + 4] == tag;
+    if (at(0, b"RIFF") || at(0, b"RF64")) && at(8, b"WAVE") {
+        return true;
+    }
+    if at(0, b"FORM") && (at(8, b"AIFF") || at(8, b"AIFC")) {
+        return true;
+    }
+    if at(0, b"caff") || at(0, b"fLaC") || head.starts_with(b"ID3") {
+        return true;
+    }
+    // An MPEG audio or ADTS frame: eleven set bits of sync, then a layer.
+    if head[0] == 0xFF
+        && ((head[1] & 0xE0 == 0xE0 && head[1] & 0x06 != 0) || head[1] & 0xF6 == 0xF0)
+    {
+        return true;
+    }
+    if at(4, b"ftyp") && n >= 12 {
+        let brand: [u8; 4] = [head[8], head[9], head[10], head[11]];
+        return AUDIO_BRANDS.contains(&&brand) || film_boxes(read_at, len);
+    }
+    false
+}
+
 /// A native thumbnail's exact filesystem version. mtime alone can be put
 /// back after a write; inode and ctime also detect replacements and edits.
 #[repr(C)]
@@ -1604,18 +1651,23 @@ pub fn decide_media(path: &str, origin: Origin) -> MediaVerdict {
     let name = if given.is_empty() { "That file" } else { given };
     let Some(kind) = media_kind(path) else {
         return MediaVerdict::Refuse(format!(
-            "{name} isn't a document or video this pane can preview, so it opens in its own app."
+            "{name} isn't a document, video or sound file this pane can preview, so it opens in its own app."
         ));
     };
     let (what, verb) = match kind {
         Media::Video => ("a video", "play it"),
+        Media::Audio => ("a sound file", "play it"),
         Media::Pdf => ("a PDF", "show it"),
         Media::Office => ("an Office or iWork document", "show it"),
     };
     if origin == Origin::OtherMac {
         return MediaVerdict::Refuse(format!(
             "{name} is on another Mac, so it can't {} here yet.",
-            if kind == Media::Video { "play" } else { "show" }
+            if matches!(kind, Media::Video | Media::Audio) {
+                "play"
+            } else {
+                "show"
+            }
         ));
     }
     let given_path = Path::new(path);
@@ -3658,11 +3710,31 @@ mod tests {
     }
 
     #[test]
+    fn sound_files_by_their_first_bytes() {
+        let sound = |head: &[u8]| looks_like(Media::Audio, head, head.len() as u64);
+        assert!(sound(b"RIFF\x24\0\0\0WAVEfmt "));
+        assert!(sound(b"FORM\0\0\0\x20AIFFCOMM"));
+        assert!(sound(b"ID3\x04\0\0\0\0\0\0"));
+        assert!(sound(b"\xff\xfb\x90\x64"));
+        assert!(sound(b"\xff\xf1\x50\x80"));
+        assert!(sound(b"fLaC\0\0\0\x22"));
+        assert!(sound(b"\0\0\0\x18ftypM4A \0\0\0\0"));
+        assert!(!sound(b"RIFF\x24\0\0\0AVI LIST"));
+        assert!(!sound(b"#!/bin/sh\necho"));
+        assert!(!sound(b"%PDF-1.7"));
+        assert!(!sound(b"\0\0\0\x18ftypheic\0\0\0\0"));
+        assert!(!sound(b"ID"));
+    }
+
+    #[test]
     fn media_kinds_by_name() {
         assert_eq!(media_kind("/a/b/Launch.MP4"), Some(Media::Video));
         assert_eq!(media_kind("/a/b.m4v"), Some(Media::Video));
         assert_eq!(media_kind("/a/b.pdf"), Some(Media::Pdf));
         assert_eq!(media_kind("/a/b.webm"), None);
+        assert_eq!(media_kind("/a/saved.WAV"), Some(Media::Audio));
+        assert_eq!(media_kind("/a/b.m4a"), Some(Media::Audio));
+        assert_eq!(media_kind("/a/b.ogg"), None);
         assert_eq!(media_kind("/a/.mp4"), None);
         assert!(!looks_like(Media::Video, b"\0\0\0", 3));
     }

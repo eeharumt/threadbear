@@ -18,7 +18,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import type { SendOptions, ThreadState } from '../runner.ts';
-import { fromMike } from '../runner.ts';
+import { fromMike } from './messages.ts';
 
 export const reviewsPart = {
   createReview(this: Runner, threadId: string, raw: ReviewInput): { review: DesignReview } {
@@ -32,10 +32,10 @@ export const reviewsPart = {
     try {
       const options = input.options.map(({shots: sources, ...option}) => {
         const shots = sources.map(s => ({...(s.title ? {title: s.title} : {}),
-          ...(s.kind === 'video' || s.kind === 'page' ? copyReviewMedia(dir, s.path, s.kind) : {image: copyImageInto(dir, s.path)}),
+          ...(s.kind && s.kind !== 'image' ? copyReviewMedia(dir, s.path, s.kind) : {image: copyImageInto(dir, s.path)}),
           ...(s.marks?.length ? {marks: s.marks} : {})}));
         // image stays the first shot for clients that show one per option
-        // (a video's or page's still); shots only when there's more to say
+        // (a video's, sound's or page's still); shots only when there's more to say
         // than that one picture, marks included, so marks always live on a shot.
         return {...option, image: shots[0].image, ...(shots.length > 1 || shots[0].title || 'media' in shots[0] || 'marks' in shots[0] ? {shots} : {})};
       });

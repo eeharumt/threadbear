@@ -13,7 +13,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import type { Runner, ThreadState, TurnHold } from '../runner.ts';
-import { CARRY_ON_TOKEN } from '../runner.ts';
+import { CARRY_ON_TOKEN } from './carry-on.ts';
 import type { ImageRef } from '../protocol.ts';
 import { normaliseRecord, type ThreadRecord } from '../store.ts';
 import type { RunnerPart } from './part.ts';

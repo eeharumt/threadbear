@@ -22,7 +22,6 @@ use crate::style::px;
 use std::collections::HashMap;
 use std::ops::Range;
 use std::path::PathBuf;
-use std::rc::Rc;
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant};
 use threadbear_core::chips::{self as found, Mention, MentionKind, Piece, ThreadIndex};
@@ -43,7 +42,7 @@ const CARD_LABEL_MAX: f32 = 230.;
 /// How long the pointer rests on a chip before its card shows: a thread's
 /// and a picture's quickly, a page's a little longer, as links are
 /// everywhere (TextKit's hoverChip and hoverPeek).
-pub(crate) const QUICK: Duration = Duration::from_millis(350);
+const QUICK: Duration = Duration::from_millis(350);
 pub(crate) const SLOWER: Duration = Duration::from_millis(500);
 
 // ---------------------------------------------------------------- hover cards
@@ -231,7 +230,7 @@ pub(crate) fn thread_card(
 
 /// What a chip in the bubble stands for.
 #[derive(Clone)]
-pub(crate) enum ChipKind {
+enum ChipKind {
     /// The message's picture at this index.
     Picture(usize),
     Card {
@@ -283,7 +282,7 @@ impl ChipKind {
 }
 
 /// A piece of a bubble's line: words, or a chip.
-pub(crate) enum Token {
+enum Token {
     Words(String),
     Chip(ChipKind),
 }
@@ -356,14 +355,8 @@ fn chip_width(kind: &ChipKind, window: &Window) -> Pixels {
 
 /// The bubble's lines, broken where the words would wrap at `max` with each
 /// chip as one unbreakable piece, as TextKit lays the Swift bubble's
-/// attachments out. `font` is the words' size (the bubble's `size::BODY`).
-/// Each line's words between chips come as one run (`Token::Words`).
-pub(crate) fn lay_out(
-    pieces: Vec<Piece>,
-    max: Pixels,
-    font: f32,
-    window: &Window,
-) -> Vec<Vec<Token>> {
+/// attachments out.
+fn lay_out(pieces: Vec<Piece>, max: Pixels, window: &Window) -> Vec<Vec<Token>> {
     let mut lines: Vec<Vec<Token>> = vec![Vec::new()];
     // What the line's taken up to its last piece's end, its trailing spaces
     // counted (they hang past the edge when it wraps).
@@ -393,8 +386,8 @@ pub(crate) fn lay_out(
                         used = Pixels::ZERO;
                     }
                     for word in paragraph.split_inclusive(' ') {
-                        let full = text_width(word, font, window);
-                        let ink = text_width(word.trim_end_matches(' '), font, window);
+                        let full = text_width(word, size::BODY, window);
+                        let ink = text_width(word.trim_end_matches(' '), size::BODY, window);
                         add(
                             &mut lines,
                             &mut used,
@@ -417,26 +410,13 @@ pub(crate) fn lay_out(
             }
         }
     }
-    // A line's words between chips as one run, as one text draws them.
     lines
-        .into_iter()
-        .map(|line| {
-            let mut runs: Vec<Token> = Vec::new();
-            for token in line {
-                match (runs.last_mut(), token) {
-                    (Some(Token::Words(run)), Token::Words(more)) => run.push_str(&more),
-                    (_, token) => runs.push(token),
-                }
-            }
-            runs
-        })
-        .collect()
 }
 
 /// A line's width as it's drawn: each run of words between chips measured
 /// whole, as one text draws it, the line's last without its trailing
 /// spaces, and the chips.
-pub(crate) fn drawn_width(tokens: &[Token], font: f32, window: &Window) -> Pixels {
+fn drawn_width(tokens: &[Token], window: &Window) -> Pixels {
     let mut width = Pixels::ZERO;
     let mut run = String::new();
     let measure = |run: &mut String, last: bool| -> Pixels {
@@ -448,7 +428,7 @@ pub(crate) fn drawn_width(tokens: &[Token], font: f32, window: &Window) -> Pixel
         let width = if text.is_empty() {
             Pixels::ZERO
         } else {
-            text_width(text, font, window)
+            text_width(text, size::BODY, window)
         };
         run.clear();
         width
@@ -482,66 +462,217 @@ impl ThreadPane {
         if pieces.iter().all(|p| matches!(p, Piece::Words(_))) {
             return None;
         }
-        let lines = lay_out(pieces, max, size::BODY, window);
+        let lines = lay_out(pieces, max, window);
         let widest = lines
             .iter()
-            .map(|l| drawn_width(l, size::BODY, window).min(max))
+            .map(|l| drawn_width(l, window).min(max))
             .fold(Pixels::ZERO, Pixels::max)
             .ceil();
-        let me = cx.entity().downgrade();
-        let app = self.composer.read(cx).app.upgrade();
-        let runner = self.summary.runner_id.clone();
-        let place = ChipPlace {
-            origin: self.origin(),
-            runner_name: match (&app, &runner) {
-                (Some(app), Some(id)) => app.read(cx).runner_name_of(id),
-                _ => "another Mac".to_owned(),
-            },
-            runner_id: runner,
-            cwd: self.summary.cwd.clone(),
-            open_thread: Rc::new(move |id, window, cx| {
-                me.update(cx, |this, cx| this.open_thread_link(id, window, cx))
-                    .ok();
-            }),
-            retina: window.scale_factor() >= 2.,
-        };
         let mut body = v_flex();
         for (n, tokens) in lines.into_iter().enumerate() {
             let mut line = h_flex().min_h(px(size::BODY_LINE)).items_center();
             // Words between chips as one run of selectable text each, its
             // web addresses links (`bubble_words`).
+            let mut words = String::new();
             let (mut runs, mut chips) = (0, 0);
+            let flush = |this: &Self,
+                         line: Div,
+                         words: &mut String,
+                         runs: &mut usize,
+                         cx: &mut Context<Self>|
+             -> Div {
+                if words.is_empty() {
+                    return line;
+                }
+                *runs += 1;
+                let id = ("user-chip-text", ix * 100_000 + n * 100 + *runs);
+                line.child(div().flex_none().child(this.bubble_words(
+                    id,
+                    std::mem::take(words),
+                    row_id,
+                    cx,
+                )))
+            };
             for token in tokens {
                 match token {
-                    Token::Words(text) => {
-                        runs += 1;
-                        let id = ("user-chip-text", ix * 100_000 + n * 100 + runs);
-                        line = line.child(
-                            div()
-                                .flex_none()
-                                .child(self.bubble_words(id, text, row_id, cx)),
-                        );
-                    }
+                    Token::Words(text) => words.push_str(&text),
                     Token::Chip(kind) => {
+                        line = flush(self, line, &mut words, &mut runs, cx);
                         chips += 1;
-                        let key = SharedString::from(format!(
-                            "bubble-chip-{ix}-{n}-{chips}-{}",
-                            kind.label()
+                        line = line.child(self.bubble_chip(
+                            ix,
+                            n,
+                            chips,
+                            kind,
+                            &message.images,
+                            window.scale_factor() >= 2.,
+                            cx,
                         ));
-                        let threads = app.as_ref().map(|a| a.read(cx));
-                        let shown = match (&kind, threads) {
-                            (ChipKind::Thread { id, .. }, Some(t)) if card_shown(&key, QUICK) => {
-                                thread_card(id, &t.threads, &t.logins.accounts, cx)
-                            }
-                            _ => None,
-                        };
-                        line = line.child(chip(key, kind, &message.images, &place, shown, cx));
                     }
                 }
             }
+            line = flush(self, line, &mut words, &mut runs, cx);
             body = body.child(line);
         }
         Some((widest, body.into_any_element()))
+    }
+
+    /// One chip in the bubble (PictureChip.draw, CardChip.draw): a small
+    /// rounded tag with its symbol and label, which opens what it stands
+    /// for and shows its card after a moment.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "baselined when the lint was turned on (20 Nov 2026); take it off when this is next split up"
+    )]
+    fn bubble_chip(
+        &self,
+        ix: usize,
+        line: usize,
+        at: usize,
+        kind: ChipKind,
+        images: &[ImageRef],
+        retina: bool,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let (fill, secondary) = (style::chip_fill(cx), style::secondary_label(cx));
+        // Its half-point edge (NSColor.separatorColor): a pixel on a Retina
+        // screen; on a 1x one AppKit's comes out at half strength, so this
+        // does too.
+        let edge = if retina {
+            style::hairline(cx)
+        } else {
+            style::hairline(cx).opacity(0.5)
+        };
+        let key = SharedString::from(format!("bubble-chip-{ix}-{line}-{at}-{}", kind.label()));
+        let label = div()
+            .text_size(px(CHIP_LABEL))
+            .line_height(px(16.))
+            .text_color(secondary)
+            .whitespace_nowrap()
+            .when(!matches!(kind, ChipKind::Picture(_)), |d| {
+                d.max_w(px(CARD_LABEL_MAX)).truncate()
+            })
+            .child(kind.label());
+        // SF's symbols fill the 14-point box; Lucide's draw a little inside theirs.
+        let symbol = div()
+            .size(px(CHIP_ICON))
+            .flex()
+            .items_center()
+            .justify_center()
+            .child(
+                crate::icons::symbol(kind.symbol())
+                    .size(px(13.))
+                    .text_color(secondary),
+            );
+        let chip = div()
+            .id(ElementId::Name(key.clone()))
+            .relative()
+            .flex_none()
+            .h(px(size::CHIP_HEIGHT))
+            .pl(px(CHIP_INSET))
+            .pr(px(CHIP_TRAILING))
+            .flex()
+            .items_center()
+            .gap(px(CHIP_GAP))
+            .rounded(px(CHIP_RADIUS))
+            .bg(fill)
+            .border(gpui_kit::px(0.5))
+            .border_color(edge)
+            .cursor_pointer()
+            .child(symbol)
+            .child(label)
+            .when(matches!(kind, ChipKind::File { .. }), |d| {
+                d.child(crate::composer_inline::file_dot(cx))
+            })
+            // Not the start of a selection in the words round it.
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation());
+        let origin = self.origin();
+        let name = kind.label();
+        let chip = match kind {
+            // Another Mac's picture: its path names a file on that Mac, and
+            // read here it's whatever this Mac has at that path (Codex's review
+            // of the drags, 12 Nov), so it opens no card. The viewer asks that
+            // Mac for it through the runner, as the tile over the words does
+            // (remote_pictures.rs), so a click opens that (Mike, 18 Nov).
+            ChipKind::Picture(index) if origin != Origin::ThisMac => {
+                let runner = self.summary.runner_id.clone();
+                let images = images.to_vec();
+                chip.tip(crate::viewer::TILE_TIP)
+                    .on_click(move |_, window, cx| {
+                        crate::viewer::open_from_tile(&images, index, runner.as_deref(), window, cx)
+                    })
+            }
+            ChipKind::Picture(index) => {
+                let picture = images.get(index);
+                let shown = picture
+                    .filter(|_| card_shown(&key, QUICK))
+                    .map(|p| under_chip(picture_card(p, cx)));
+                let images = images.to_vec();
+                let hover_key = key;
+                chip.on_hover(move |on, window, cx| hover(&hover_key, *on, QUICK, window, cx))
+                    // The in-app viewer, as a click on the picture over the words does.
+                    .on_click(move |_, window, cx| {
+                        crate::viewer::open_from_tile(&images, index, None, window, cx)
+                    })
+                    .children(shown)
+            }
+            ChipKind::Card { title, url } => {
+                let shown = card_shown(&key, SLOWER).then(|| {
+                    under_chip(words_card(
+                        &page_title(&title, &url),
+                        &threadbear_core::highlights::text::address(&url),
+                        cx,
+                    ))
+                });
+                let cwd = self.summary.cwd.clone();
+                let hover_key = key;
+                chip.on_hover(move |on, window, cx| hover(&hover_key, *on, SLOWER, window, cx))
+                    // Through the open gate, as the reply's links go.
+                    .on_click(move |_, _, cx| open_gate::open_link(&url, origin, &cwd, cx))
+                    .children(shown)
+            }
+            // Another Mac's file is on that Mac, so it opens nothing here.
+            ChipKind::File { .. } if origin != Origin::ThisMac => {
+                let runner = self.summary.runner_id.clone().unwrap_or_default();
+                let mac = self.composer.read(cx).app.upgrade().map_or_else(
+                    || "another Mac".to_owned(),
+                    |app| app.read(cx).runner_name_of(&runner),
+                );
+                chip.cursor_default()
+                    .tip(format!("Not uploaded: this file is on {mac}"))
+            }
+            ChipKind::File { path, .. } => {
+                let path = threadbear_core::reducer::text::expanding_tilde(&path);
+                let shown = card_shown(&key, SLOWER).then(|| {
+                    under_chip(words_card(
+                        &name,
+                        &crate::composer_inline::short_path(&path),
+                        cx,
+                    ))
+                });
+                let hover_key = key;
+                chip.on_hover(move |on, window, cx| hover(&hover_key, *on, SLOWER, window, cx))
+                    .on_click(move |_, _, cx| open_gate::open_file(&path, origin, cx))
+                    .children(shown)
+            }
+            ChipKind::Thread { id, .. } => {
+                let shown = card_shown(&key, QUICK)
+                    .then(|| self.thread_card_for(&id, cx))
+                    .flatten()
+                    .map(under_chip);
+                let hover_key = key;
+                chip.on_hover(move |on, window, cx| hover(&hover_key, *on, QUICK, window, cx))
+                    .on_click(cx.listener(move |this, _: &ClickEvent, window, cx| {
+                        this.open_thread_link(&id, window, cx)
+                    }))
+                    .children(shown)
+            }
+        };
+        // Its label is what it's called to a screen reader, and to a script.
+        chip.test_support()
+            .role(Role::Link)
+            .aria_label(name)
+            .into_any_element()
     }
 
     /// The thread's hover card, from the app's thread list.
@@ -550,167 +681,6 @@ impl ThreadPane {
         let app = app.read(cx);
         thread_card(id, &app.threads, &app.logins.accounts, cx)
     }
-}
-
-/// Where a message's chips are drawn, and what they need from its thread to
-/// open what they stand for: Mike's bubble in the thread, or his request and
-/// messages on a Feed card (inbox_feed.rs).
-pub(crate) struct ChipPlace {
-    pub(crate) origin: Origin,
-    /// The thread's runner when it's another Mac's (`ThreadSummary::runner_id`).
-    pub(crate) runner_id: Option<String>,
-    /// Its Mac by name, for that Mac's file chip.
-    pub(crate) runner_name: String,
-    pub(crate) cwd: String,
-    /// A thread chip's click.
-    pub(crate) open_thread: Rc<dyn Fn(&str, &mut Window, &mut App)>,
-    /// A Retina screen: the chip's edge is a pixel.
-    pub(crate) retina: bool,
-}
-
-/// One chip among a message's words (PictureChip.draw, CardChip.draw): a
-/// small rounded tag with its symbol and label, which opens what it stands
-/// for and shows its card after a moment. `thread_card` is a thread chip's
-/// card while it shows (`card_shown`). A picture chip whose picture isn't
-/// known yet (a Feed card before its message is read) is only the tag.
-pub(crate) fn chip(
-    key: SharedString,
-    kind: ChipKind,
-    images: &[ImageRef],
-    place: &ChipPlace,
-    thread_card: Option<AnyElement>,
-    cx: &App,
-) -> AnyElement {
-    let (fill, secondary) = (style::chip_fill(cx), style::secondary_label(cx));
-    // Its half-point edge (NSColor.separatorColor): a pixel on a Retina
-    // screen; on a 1x one AppKit's comes out at half strength, so this
-    // does too.
-    let edge = if place.retina {
-        style::hairline(cx)
-    } else {
-        style::hairline(cx).opacity(0.5)
-    };
-    let label = div()
-        .text_size(px(CHIP_LABEL))
-        .line_height(px(16.))
-        .text_color(secondary)
-        .whitespace_nowrap()
-        .when(!matches!(kind, ChipKind::Picture(_)), |d| {
-            d.max_w(px(CARD_LABEL_MAX)).truncate()
-        })
-        .child(kind.label());
-    // SF's symbols fill the 14-point box; Lucide's draw a little inside theirs.
-    let symbol = div()
-        .size(px(CHIP_ICON))
-        .flex()
-        .items_center()
-        .justify_center()
-        .child(
-            crate::icons::symbol(kind.symbol())
-                .size(px(13.))
-                .text_color(secondary),
-        );
-    let chip = div()
-        .id(ElementId::Name(key.clone()))
-        .relative()
-        .flex_none()
-        .h(px(size::CHIP_HEIGHT))
-        .pl(px(CHIP_INSET))
-        .pr(px(CHIP_TRAILING))
-        .flex()
-        .items_center()
-        .gap(px(CHIP_GAP))
-        .rounded(px(CHIP_RADIUS))
-        .bg(fill)
-        .border(gpui_kit::px(0.5))
-        .border_color(edge)
-        .cursor_pointer()
-        .child(symbol)
-        .child(label)
-        .when(matches!(kind, ChipKind::File { .. }), |d| {
-            d.child(crate::composer_inline::file_dot(cx))
-        })
-        // Not the start of a selection in the words round it.
-        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation());
-    let origin = place.origin;
-    let name = kind.label();
-    let chip = match kind {
-        // Its picture isn't known yet: the tag alone, until it is.
-        ChipKind::Picture(index) if images.get(index).is_none() => chip.cursor_default(),
-        // Another Mac's picture: its path names a file on that Mac, and
-        // read here it's whatever this Mac has at that path (Codex's review
-        // of the drags, 12 Nov), so it opens no card. The viewer asks that
-        // Mac for it through the runner, as the tile over the words does
-        // (remote_pictures.rs), so a click opens that (Mike, 18 Nov).
-        ChipKind::Picture(index) if origin != Origin::ThisMac => {
-            let runner = place.runner_id.clone();
-            let images = images.to_vec();
-            chip.tip(crate::viewer::TILE_TIP)
-                .on_click(move |_, window, cx| {
-                    crate::viewer::open_from_tile(&images, index, runner.as_deref(), window, cx)
-                })
-        }
-        ChipKind::Picture(index) => {
-            let picture = images.get(index);
-            let shown = picture
-                .filter(|_| card_shown(&key, QUICK))
-                .map(|p| under_chip(picture_card(p, cx)));
-            let images = images.to_vec();
-            let hover_key = key;
-            chip.on_hover(move |on, window, cx| hover(&hover_key, *on, QUICK, window, cx))
-                // The in-app viewer, as a click on the picture over the words does.
-                .on_click(move |_, window, cx| {
-                    crate::viewer::open_from_tile(&images, index, None, window, cx)
-                })
-                .children(shown)
-        }
-        ChipKind::Card { title, url } => {
-            let shown = card_shown(&key, SLOWER).then(|| {
-                under_chip(words_card(
-                    &page_title(&title, &url),
-                    &threadbear_core::highlights::text::address(&url),
-                    cx,
-                ))
-            });
-            let cwd = place.cwd.clone();
-            let hover_key = key;
-            chip.on_hover(move |on, window, cx| hover(&hover_key, *on, SLOWER, window, cx))
-                // Through the open gate, as the reply's links go.
-                .on_click(move |_, _, cx| open_gate::open_link(&url, origin, &cwd, cx))
-                .children(shown)
-        }
-        // Another Mac's file is on that Mac, so it opens nothing here.
-        ChipKind::File { .. } if origin != Origin::ThisMac => chip.cursor_default().tip(format!(
-            "Not uploaded: this file is on {}",
-            place.runner_name
-        )),
-        ChipKind::File { path, .. } => {
-            let path = threadbear_core::reducer::text::expanding_tilde(&path);
-            let shown = card_shown(&key, SLOWER).then(|| {
-                under_chip(words_card(
-                    &name,
-                    &crate::composer_inline::short_path(&path),
-                    cx,
-                ))
-            });
-            let hover_key = key;
-            chip.on_hover(move |on, window, cx| hover(&hover_key, *on, SLOWER, window, cx))
-                .on_click(move |_, _, cx| open_gate::open_file(&path, origin, cx))
-                .children(shown)
-        }
-        ChipKind::Thread { id, .. } => {
-            let hover_key = key;
-            let open = place.open_thread.clone();
-            chip.on_hover(move |on, window, cx| hover(&hover_key, *on, QUICK, window, cx))
-                .on_click(move |_, window, cx| open(&id, window, cx))
-                .children(thread_card.map(under_chip))
-        }
-    };
-    // Its label is what it's called to a screen reader, and to a script.
-    chip.test_support()
-        .role(Role::Link)
-        .aria_label(name)
-        .into_any_element()
 }
 
 /// A page's card title: the link's words, unless they're the address again

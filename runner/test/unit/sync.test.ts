@@ -14,7 +14,7 @@ import { loadConfig, paths, readRunnerJson } from '../../src/config.ts';
 import { downgradeFetch, redirectTrap } from '../helpers/redirect-trap.ts';
 import { scrubText } from '../../src/redaction.ts';
 import { Scrubber } from '../../src/scrub.ts';
-import { SCRUB_API_VERSION, isConvexCloud, MESSAGE_PICTURES_API_VERSION, MESSAGE_WAKE_REASON_API_VERSION, LOGIN_STATE_API_VERSION } from '../../src/sync.ts';
+import { SCRUB_API_VERSION, isConvexCloud, MESSAGE_PICTURES_API_VERSION, MESSAGE_WAKE_REASON_API_VERSION, LOGIN_STATE_API_VERSION, sendFrom } from '../../src/sync.ts';
 import { makePng } from '../helpers/png.ts';
 import { ConvexUseTally } from '../../src/convex-use.ts';
 
@@ -954,6 +954,20 @@ test('messages: the first start against a deployment sends whole histories once,
   const second = await start([{ threadId: a.id, lastSeq: lastA }, { threadId: b.id, lastSeq: 1 }]);
   assert.ok(second.posts.some((p) => p.fn === 'sync:messageHeads'));
   assert.equal(second.sent.filter((m) => m.role !== 'tool').length, 0);
+  // A head past the thread's own log isn't one this runner sent (an old copy
+  // of the main key writing as it, Daybreak 178): taken as the head, nothing
+  // after it would ever go up. The whole history goes again instead.
+  const third = await start([{ threadId: a.id, lastSeq: 2 ** 49 }, { threadId: b.id, lastSeq: 1 }]);
+  assert.equal(third.sent.filter((m) => m.threadId === a.id && m.role !== 'tool').length, 26, 'a forged head suppresses nothing');
+  assert.equal(third.sent.filter((m) => m.threadId === b.id).length, 0, "b's real head still holds");
+});
+
+test("a start's head is believed only up to the thread's own last seq", () => {
+  assert.equal(sendFrom({ lastSeq: 40 }, undefined), 0);
+  assert.equal(sendFrom({ lastSeq: 40 }, 12), 12);
+  assert.equal(sendFrom({ lastSeq: 40 }, 40), 40);
+  assert.equal(sendFrom({ lastSeq: 40 }, 41), 0);
+  assert.equal(sendFrom({ lastSeq: 40 }, 2 ** 49), 0);
 });
 
 test('a tool call becomes one line: the description, the file, the search, else the title', () => {
@@ -1903,16 +1917,19 @@ test('the backend API version from the heartbeat shows in status, and an old bac
   await old.sync.stop();
 });
 
+const PNG_A = makePng(8, 8);
+const PNG_B = makePng(16, 16);
+
 // Project pictures: a runner with a picture for a project sends it to file
 // storage once, when the backend takes pictures (API 5), and never again
 // for the same copy.
 function setupPictures(opts: { backend?: number; has?: { projectId: string; picture: string }[]; project?: Partial<Project>; uploadFails?: () => Error | undefined } = {}) {
   const h = makeHarness();
   const dir = tmpDir();
-  // A tiny PNG by name only: the bytes don't matter to the sync, which
-  // sends what's in the file.
+  // A tiny PNG: the sync sends what's in the file, once its header says
+  // it's within the icon budget (icon-budget.ts).
   const iconPath = path.join(dir, 'p1-abc123.png');
-  fs.writeFileSync(iconPath, Buffer.from('PNGBYTES'));
+  fs.writeFileSync(iconPath, PNG_A);
   const calls: Call[] = [];
   const uploads: { url: string; bytes: string; mediaType: string }[] = [];
   let project: Project = {
@@ -1960,7 +1977,7 @@ test('project pictures: sent to file storage once the backend takes them, once p
   // The project went up with its icon named, and the picture itself followed.
   const set = calls.filter((c) => c.fn === 'sync:setProjects');
   assert.deepEqual((set[0]!.args.projects as { icon?: unknown }[])[0]!.icon, { symbol: 'leaf', picture: 'p1-abc123', by: 'librarian' });
-  assert.deepEqual(uploads, [{ url: 'https://upload.example/u1', bytes: 'PNGBYTES', mediaType: 'image/png' }]);
+  assert.deepEqual(uploads, [{ url: 'https://upload.example/u1', bytes: PNG_A.toString(), mediaType: 'image/png' }]);
   assert.deepEqual(setIcons()[0]!.args, { key: 'k', runnerId: 'r1', projectId: 'p1', picture: 'p1-abc123', storageId: 'st_1', mediaType: 'image/png' });
   // The list changing again doesn't send the same picture again.
   change({ title: 'Threadbear app' });
@@ -1968,11 +1985,11 @@ test('project pictures: sent to file storage once the backend takes them, once p
   assert.equal(uploads.length, 1);
   // A new copy (a new file name) does.
   const next = path.join(dir, 'p1-def456.png');
-  fs.writeFileSync(next, Buffer.from('NEWBYTES'));
+  fs.writeFileSync(next, PNG_B);
   change({ icon: { image: { path: next, mediaType: 'image/png' }, by: 'mike', updatedAt: '2026-10-28T00:00:00.000Z' } });
   await sync.flushNow();
   assert.equal(uploads.length, 2);
-  assert.equal(uploads[1]!.bytes, 'NEWBYTES');
+  assert.equal(uploads[1]!.bytes, PNG_B.toString());
   assert.equal(setIcons()[1]!.args.picture, 'p1-def456');
   // Back to a symbol only: nothing to upload, and the mirror drops the
   // picture with setProjects (this backend is older than upsertProjects).
@@ -2015,7 +2032,7 @@ test('project pictures: a picture that cannot be read is skipped, not retried un
   assert.equal(sync.status().state, 'ok');
   // Fixed and changed: sent then.
   const fixed = path.join(dir, 'p1-fixed.png');
-  fs.writeFileSync(fixed, Buffer.from('OK'));
+  fs.writeFileSync(fixed, PNG_B);
   change({ icon: { image: { path: fixed, mediaType: 'image/png' }, by: 'librarian', updatedAt: '2026-10-28T00:00:00.000Z' } });
   await sync.flushNow();
   assert.equal(uploads.length, 1);

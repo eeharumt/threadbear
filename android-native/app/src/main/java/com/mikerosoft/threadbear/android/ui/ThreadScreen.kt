@@ -78,6 +78,7 @@ import com.mikerosoft.threadbear.kit.LabReviewText
 import com.mikerosoft.threadbear.kit.MessageImage
 import com.mikerosoft.threadbear.kit.PendingApproval
 import com.mikerosoft.threadbear.kit.PhoneMessage
+import com.mikerosoft.threadbear.kit.PhoneSection
 import com.mikerosoft.threadbear.kit.PhoneThread
 import com.mikerosoft.threadbear.kit.Plans
 import com.mikerosoft.threadbear.kit.Role
@@ -456,7 +457,9 @@ private fun StatusCard(vm: ThreadViewModel, thread: PhoneThread, messages: List<
     val lastSeq = messages.lastOrNull()?.seq
     val asks = thread.asks.orEmpty()
     val showsAsks = asks.isNotEmpty() && nothingOnItsWay && answeredAsks != thread.asksSeq && thread.waitingOnMike
-    val done = thread.status == ThreadStatus.IDLE && !thread.needsYou && thread.archivedAt == null && thread.working == null &&
+    // Waiting on its own work isn't done, as on the Mac.
+    val done = thread.status == ThreadStatus.IDLE && !thread.needsYou && thread.archivedAt == null && !thread.jobGoing &&
+        thread.waitState?.section != PhoneSection.RUNNING &&
         Turns.lastShown(messages)?.role == Role.ASSISTANT && nothingOnItsWay && answeredDone != lastSeq
     var picks by remember(thread.asksSeq) { mutableStateOf(mapOf<Int, Int>()) }
     var ticked by remember(lastSeq) { mutableStateOf(setOf<Int>()) }
@@ -479,7 +482,7 @@ private fun StatusCard(vm: ThreadViewModel, thread: PhoneThread, messages: List<
             }
         }
         // Its own id per status, so the seconds start again when a stopped one runs.
-        thread.isBusy || thread.working != null -> androidx.compose.runtime.key(thread.status == ThreadStatus.RUNNING) { WorkingLine(thread.working) }
+        thread.isBusy || thread.jobGoing -> androidx.compose.runtime.key(thread.status == ThreadStatus.RUNNING) { WorkingLine(thread.working) }
         showsAsks -> AsksCard(
             asks, picks, busy = answeredAsks == thread.asksSeq,
             pick = { i, c -> picks = if (c == null) picks - i else picks + (i to c) },

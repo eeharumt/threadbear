@@ -724,7 +724,7 @@ export class Relay {
       lastSeenSeq: 0,
       runnerId: t.runnerId,
     };
-    for (const k of ['model', 'createdAt', 'lastActivityAt', 'snoozedUntil', 'archivedAt', 'starredAt', 'startedBy', 'asked', 'request', 'keywords'] as const) {
+    for (const k of ['model', 'createdAt', 'lastActivityAt', 'snoozedUntil', 'archivedAt', 'starredAt', 'startedBy', 'asked', 'keywords', 'waitState'] as const) {
       if (t[k] !== undefined) thread[k] = t[k];
     }
     // Its real access, or "unknown" from a runner that doesn't say: never
@@ -778,6 +778,9 @@ export class Relay {
       else t[k] = c.value === PUT_AWAY ? UNTIL_RESTART : c.value;
     }
     if (!kept.size) this.changed.delete(threadId);
+    // The row's state is from before the change: without it the app's own
+    // rule draws the change (Codex's review, 23 Nov).
+    else delete t.waitState;
     return t as T;
   }
 

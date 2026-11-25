@@ -226,20 +226,33 @@ data class PhoneThread(
     val cardTurn: String? = null,
     /** Its sharing by link (API 8), null for one never shared. */
     val share: PhoneShare? = null,
+    /**
+     * What it's waiting on, as the runner worked it out (WaitState.kt). Null
+     * from a runner before 23 Nov 2026, which leaves the app's own rule.
+     */
+    val waitState: WaitState? = null,
 ) {
     val id get() = threadId
     val isBusy get() = status == ThreadStatus.RUNNING || status == ThreadStatus.STARTING
 
     /** A design review waits on Mike and the thread has finished working. */
-    val reviewWaiting get() = (pendingReviews ?: 0.0) > 0 && !isBusy && working == null
+    val reviewWaiting get() = waitState?.let { it == WaitState.REVIEW } ?: ((pendingReviews ?: 0.0) > 0 && !isBusy && working == null)
 
     /** The last turn ended asking Mike for something he hasn't done yet. */
     val waitingOnMike: Boolean
         get() {
-            if (needs != "you" || isBusy) return false
+            if (needs != "you") return false
             val asks = asks ?: emptyList()
-            return asks.isEmpty() || asks.any { it.ticked != true }
+            val open = asks.isEmpty() || asks.any { it.ticked != true }
+            return waitState?.let { it == WaitState.NEEDS_YOU && open } ?: (!isBusy && open)
         }
+
+    /**
+     * Background work (a shell job, sub-agent or workflow) going with no turn
+     * holding it up for Mike: the runner's job state, or, from an older
+     * runner, any working line.
+     */
+    val jobGoing get() = waitState?.let { it == WaitState.JOB } ?: (working != null)
 
     fun hasEarlier(oldestSeq: Int?): Boolean {
         val earliest = earliestSeq ?: return false
@@ -299,6 +312,7 @@ data class PhoneThread(
             review = o.obj("review")?.let { runCatching { PhoneLabReview.read(it) }.getOrNull() },
             cardTurn = o.str("cardTurn"),
             share = PhoneShare.read(o.obj("share")),
+            waitState = WaitState.of(o.str("waitState")),
         )
     }
 }

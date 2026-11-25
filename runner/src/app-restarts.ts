@@ -5,7 +5,7 @@ import type { Clock } from './clock.ts';
 import type { Logger } from './log.ts';
 import type { Runner } from './runner.ts';
 import type { PermissionMode } from './protocol.ts';
-import { ceilingMode } from './runner/ceiling.ts';
+import { ceilingMode } from './access.ts';
 
 // Telling a thread when the Mac app has restarted onto a new build
 // (docs/protocol/updates.md, "App restarts"). An agent that changed the app asks

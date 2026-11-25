@@ -54,7 +54,8 @@ second after Allow, which looked like the same card coming back (Mike,
   commands, web fetches and other servers' tools; in Auto mode only
   edits of files that run as code; in Full only tools that always ask.
   The threadbear tools that never ask, questions and plans are never
-  queued, nor is a call too long for a card. `approval.queued` carries
+  queued, nor is a call too long for a card or with an argument named
+  `__proto__` (refused, as a card can't hold it). `approval.queued` carries
   the list, and again whenever a call joins it (they stream in while the
   card waits). Claude only: Codex asks about its own calls one at a time.
 - **Answering.** `approvals.respond` with `queued` answers them in the
@@ -495,73 +496,15 @@ went back to the project on 4 Nov. A thread's row in the backend carries
 a Mac's tooltip has it for another runner's threads. The phone doesn't
 show it.
 
-## What Mike first asked
+## What Mike first asked (taken out)
 
-A thread's summary carries `request` too: the first message Mike wrote to
-it, as one line of at most 200 characters, by the same rules as `asked`
-(not the runner's own messages, a schedule's or another agent's; a design
-review's reply as his words). Once set it stays, so it says what the thread
-is for while `asked` follows the conversation. It's absent until he's sent
-something. A thread from a runner before it learns it from the first 300
-events of its log when the runner starts, unless it's archived; a thread
-whose first message of his is past those has none, and a reader shows its
-title instead. The Mac app's Feed (experiment `feed`) heads each thread's
-card with it. A `threadIndex` row carries it from backend API 96, so the
-Feed has it for another runner's threads; the phone's thread rows don't
-(the phone has no Feed).
-
-## For everyone
-
-Experiment `feed` (runner/src/runner/everyone.ts). Mike asks Claude,
-Codex, Gemini and Grok the same question at once, as he did by hand with
-the delegate skill's panels, and reads their answers on one Feed card
-(mockup r3-c-status, 22 Nov 2026).
-
-- **Starting one.** `threads.create` with `everyone: true` makes the thread
-  as usual, the lead, on the login it would get anyway. Then for each other
-  lab of `claude`, `codex`, `antigravity` (Gemini) and `grok` it starts a
-  member thread with the same words, on a login of that lab with room
-  that the folder allows (the review's picker, runner/lab-review.ts). A
-  member runs in the lead's folder (no worktree of its own) on the lead's
-  mode, at effort `medium` (one its model doesn't take is dropped), on
-  `defaults.models[provider]`, else the model Mike's `labPanel` or
-  `labReviewers` names for that lab, else the login's own. Its message
-  ends with a line saying the others are answering too and that it
-  shouldn't change files, as they share the folder. `startedBy` is `{
-  kind: "thread", label: "For everyone", threadId: <lead> }`.
-  `threads.askOthers { threadId }` does the same for a thread that already
-  exists, with Mike's first message to it (refused, `-32602`, for one with
-  none, one that's already a panel or a member, or another runner's). Both
-  are refused (`-32602`) with the experiment off, and `everyone` isn't
-  taken from a thread's own key (rpc-gate.ts).
-- **Who's on it.** The lead's summary has `everyone: { members:
-  { provider, name, threadId }[], missing?: { provider, name, why }[] }`,
-  each member's `everyoneOf: <lead id>`. A lab with no login on this runner
-  is in `missing` with `why: "notSignedIn"`, one whose logins have no room
-  or the folder doesn't allow with `"noRoom"`, and one whose thread failed
-  to start with `"failed"`, so the card can say who's left out rather than
-  showing three answers with nothing about the fourth. With no other lab
-  at all, the lead still runs and `members` is empty.
-- **Answers go to the lead.** When a member's turn completes, its reply
-  goes to the lead as a runner message (`origin: "runner"`, `everyone:
-  true` on its `user.message`, `wakeReason` "Codex answered"), queued
-  behind a turn under way and merged with another answer still waiting in
-  the queue, so answers that arrive together cost one turn. It says who
-  answered, their words (cut at 4,000 characters), who's still to answer,
-  and asks the lead to end its turn with a headline that sums up where the
-  answers agree and differ, and asks for Mike's decision if one is needed.
-  The lead's headline is the card's "Where it's at". Not while the lead is
-  archived or hibernating: the member's reply is still in its own thread.
-- **Members tidy up.** A member that finishes with nothing for Mike is
-  archived like any helper (A quiet inbox), Mike's follow-ups to it
-  included, so the sidebar keeps the lead alone.
-- **Talking to them.** There's no request for the whole panel: the app
-  sends Mike's reply to the lead and to every member that isn't deleted
-  (`@everyone`), or to one of them (`@Codex`).
-
-Mac (GPUI) app only, in the Feed; another runner's lead shows its own
-card without its members' answers, and the phone and the website show the
-threads as plain threads.
+A thread's summary carried `request` from 20 to 23 Nov 2026: Mike's first
+message to it as one line, for the Mac app's Feed (experiment `feed`),
+which was taken out with it. Runners don't send it now, and clients ignore
+it from an older one. A thread's record from then keeps it, unread. A
+`threadIndex` row from a runner of backend API 96 or 97 may still carry it,
+so the backend still takes it (and still cuts it to 400 bytes), but
+nothing reads it.
 
 ## Loose ends
 
@@ -856,12 +799,12 @@ verdict: "shouldHaveShown"` brings a thread back as any unarchive does
 and the line `{ at, kind: "wrongHide", threadId, seq?, quiet, guesses? }`:
 `seq` the card it was quietly archived for (else its last done card),
 `quiet` whether it had the mark, `guesses` that card's. The GPUI app
-sends it from the Inbox's "Quietly archived: N today" list (threads
-quietly archived since local midnight, newest first) and from an archived
-row's menu. The Convex relay drops the verdict, so a thread on another runner
+sends it from an archived row's menu, and `tb unarchive <id>
+--wrong-hide` sends it for the daily thread that asks Mike about the day's
+quiet archives (`quiet` lines in the file). The Convex relay drops the verdict, so a thread on another runner
 comes back unlabelled, and `phone:update` takes only a plain
 `{ unarchive: true }` (a verdict there is refused); they never carry the mark
-anyway, and the phone and the website don't show the list.
+anyway.
 
 ## Secrets
 

@@ -53,7 +53,7 @@ public final class FakeBackend: Backend, @unchecked Sendable {
     /// for the new thread sheet's runner picker. Left out of the usual samples.
     /// `queued`: with the runner offline, a3 already has two messages
     /// waiting for it, for the screenshots.
-    public init(now: Date = .now, turnDelay: Duration = .seconds(2), runnerOnline: Bool = true, listDelay: Duration = .zero, pictures: Bool = false, long: Bool = false, secret: Bool = false, diagrams: Bool = false, runners: Bool = false, queued: Bool = false, many: Bool = false, loginMoved: Bool = false) {
+    public init(now: Date = .now, turnDelay: Duration = .seconds(2), runnerOnline: Bool = true, listDelay: Duration = .zero, pictures: Bool = false, long: Bool = false, secret: Bool = false, diagrams: Bool = false, code: Bool = false, runners: Bool = false, queued: Bool = false, many: Bool = false, loginMoved: Bool = false) {
         let sample = Self.sample(now: now)
         threadsById = Dictionary(uniqueKeysWithValues: sample.threads.map { ($0.threadId, $0) })
         messagesById = sample.messages
@@ -77,6 +77,11 @@ public final class FakeBackend: Backend, @unchecked Sendable {
         }
         if diagrams {
             let thread = Self.diagramThread(now: now)
+            threadsById[thread.thread.threadId] = thread.thread
+            messagesById[thread.thread.threadId] = thread.messages
+        }
+        if code {
+            let thread = Self.codeThread(now: now)
             threadsById[thread.thread.threadId] = thread.thread
             messagesById[thread.thread.threadId] = thread.messages
         }
@@ -206,6 +211,81 @@ public final class FakeBackend: Backend, @unchecked Sendable {
               <div style="margin-top:8px">After</div>
               <div style="height:14px;background:#e5e5e5;border-radius:4px"><div style="width:34%;height:100%;background:#22c55e;border-radius:4px"></div></div>
             </div>
+            ```
+            """, at: ago(1)),
+        ]
+        return (thread, messages)
+    }
+
+    // MARK: A thread with code blocks
+
+    /// `-ThreadbearCode`: a reply with a ```sql, a ```ts and an untagged
+    /// block, each under its header strip (CodeBlockView), then one with
+    /// ```bash, ```diff, ```python and ```yaml, coloured by language.
+    private static func codeThread(now: Date) -> (thread: PhoneThread, messages: [PhoneMessage]) {
+        let ago = { (minutes: Double) in now.addingTimeInterval(-minutes * 60) }
+        let thread = PhoneThread(threadId: "code", title: "Find the slow orders query", cwd: "~/code/api",
+                                 preview: "Deployed.", lastActivityAt: ago(1))
+        let messages = [
+            PhoneMessage(seq: 1, role: .user, text: "Why is the orders page so slow?", at: ago(5)),
+            PhoneMessage(seq: 2, role: .assistant, text: """
+            Found it: the orders query scans the whole table. This index fixes it:
+
+            ```sql
+            CREATE INDEX orders_customer_created
+              ON orders (customer_id, created_at DESC);
+            ```
+
+            And the query now asks for one page at a time:
+
+            ```ts
+            const orders = await db.query("orders")
+              .withIndex("by_customer", (q) => q.eq("customerId", id))
+              .order("desc")
+              .take(50);
+            ```
+
+            Before and after, from the test run:
+
+            ```
+            before  1,840 ms
+            after      12 ms
+            ```
+            """, at: ago(3)),
+            PhoneMessage(seq: 3, role: .user, text: "Ship it, and check the nightly report still adds up.", at: ago(2)),
+            PhoneMessage(seq: 4, role: .assistant, text: """
+            Deployed:
+
+            ```bash
+            # push the index first, then the code
+            npx convex deploy --yes 2>&1 | tail -3
+            echo "done at $(date)"
+            ```
+
+            The report's total was off by one:
+
+            ```diff
+            @@ -12,3 +12,3 @@ def nightly_total(rows):
+            -    return sum(r.amount for r in rows[1:])
+            +    return sum(r.amount for r in rows)
+            ```
+
+            ```python
+            def nightly_total(rows: list[Order]) -> float:
+                \"\"\"Every order from the last day.\"\"\"
+                return sum(r.amount for r in rows if r.paid is not None)  # cents
+            ```
+
+            And it runs at 2 am:
+
+            ```yaml
+            on:
+              schedule:
+                - cron: "0 2 * * *"
+            jobs:
+              report:
+                runs-on: ubuntu-latest
+                timeout-minutes: 10
             ```
             """, at: ago(1)),
         ]

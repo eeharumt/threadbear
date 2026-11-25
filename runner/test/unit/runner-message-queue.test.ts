@@ -296,6 +296,25 @@ test('runner notifications cannot keep a stop out of an active turn', () => {
   assert.equal(s.sent.at(-1)!.text, 'Stop now');
 });
 
+test("the runner's notes reach a running turn in the order sent, a later one never past one waiting", () => {
+  const { h, thread, turnId, s } = running();
+  // Held in the queue (as while a cold thread compacts), then a newer note.
+  h.runner.send(thread.id, 'CI failed again', [], { origin: 'runner', wakeReason: "Main's CI failed again", queue: true });
+  assert.notEqual(h.runner.send(thread.id, 'CI passed again', [], { origin: 'runner', wakeReason: "Main's CI passed again" }).turnId, turnId);
+  assert.ok(!s.sent.some((m) => m.text === 'CI passed again'), 'not steered past the one waiting');
+  assert.deepEqual(h.runner.mustGet(thread.id).rec.queue.map((q) => q.text), ['CI failed again', 'CI passed again']);
+});
+
+test("the runner's note doesn't steer into a turn past a message of Mike's a Stop left unread", () => {
+  const { h, thread, turnId, s } = running();
+  const st = h.runner.mustGet(thread.id);
+  // A turn another thread's message started, with his stop still saved.
+  st.rec.interruptedMessages = [1];
+  assert.notEqual(h.runner.send(thread.id, 'CI passed again', [], { origin: 'runner', wakeReason: "Main's CI passed again" }).turnId, turnId);
+  assert.ok(!s.sent.some((m) => m.text === 'CI passed again'));
+  assert.deepEqual(st.rec.queue.map((q) => q.text), ['CI passed again']);
+});
+
 test('a fenced command in the reminder body does not turn an empty check failure into consumed output', () => {
   const { h, thread } = running();
   const out = checkOutcome({ ok: false, output: '', why: 'timeout' });

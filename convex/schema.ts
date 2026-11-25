@@ -166,6 +166,10 @@ export const threadFields = {
   // carries on by itself once the runner can, since API 34: the phone's
   // row says "Waiting for connection" rather than Failed.
   waitingForNetwork: v.optional(v.object({ since: v.string() })),
+  // What it's waiting on, worked out by its runner for every app to draw
+  // (docs/protocol/needs-you.md, "Wait state"). Since API 99; a string, so a
+  // state a newer runner adds doesn't turn the row down.
+  waitState: v.optional(v.string()),
   // The approval or question the thread is waiting on, if any (step 2).
   pendingApproval: v.optional(
     v.union(
@@ -278,6 +282,17 @@ export const appSchema = defineSchema({
     box: v.optional(v.object({ serviceId: v.id('runnerServices') })),
   }).index('by_runnerId', ['runnerId']),
 
+  // The box image main's workflow last promoted for a Fly app, by digest:
+  // what a virtual runner that follows main boots (boxImage.ts). One row an app.
+  boxImages: defineTable({
+    app: v.string(),
+    image: v.string(),
+    // The main commit the workflow ran on, from its OIDC token.
+    commit: v.string(),
+    // That token's iat (seconds): promotions only go forward.
+    issuedAt: v.number(),
+    promotedAt: v.number(),
+  }).index('by_app', ['app']),
   // Virtual runners (docs/virtual-runners.md, decision 2): one row each, a
   // service that starts a box per thread on a provider as needed.
   runnerServices: defineTable({
@@ -285,7 +300,9 @@ export const appSchema = defineSchema({
     // Which adapter (convex/boxProviders/<provider>.ts, boxService.ts PROVIDERS): 'fly'.
     provider: v.string(),
     box: v.object({ cpus: v.number(), memoryMb: v.number() }),
-    // The OCI image every box starts from (the runner in box mode).
+    // The OCI image every box starts from (the runner in box mode), pinned
+    // by digest, or registry.fly.io/<FLY_APP>:latest for one that follows
+    // main: its boxes boot the digest promoted then (boxImage.ts), never the tag.
     image: v.string(),
     region: v.optional(v.string()),
     // Defaults in BOX_LIMITS (boxes.ts): 5 boxes awake at once, sleep after
@@ -509,12 +526,18 @@ export const appSchema = defineSchema({
     startedBy: v.optional(v.object({ kind: v.string(), label: v.string(), icon: v.optional(v.string()), threadTitle: v.optional(v.string()), why: v.optional(v.string()) })),
     // What Mike last said to it, one line: the Mac row's "You: ...". Since API 32.
     asked: v.optional(v.string()),
-    // What Mike first asked it, one line: another Mac's Feed card. Since API 96.
+    // What Mike first asked it, one line, for the Feed (API 96). The Feed
+    // was taken out on 23 Nov 2026 and runners stopped sending it, so
+    // nothing reads it; runners from before still send it, and old rows
+    // have it, so it stays until a schema tidy.
     request: v.optional(v.string()),
     recap: v.optional(v.string()), // the recap box's, gone 11 Nov; kept so old rows load
     keywords: v.optional(v.string()), // the librarian's search words, since API 74
     // Its access mode, so another Mac's composer shows it. Since API 88.
     permissionMode: v.optional(v.string()),
+    // What it's waiting on (docs/protocol/needs-you.md, "Wait state"), so
+    // another Mac sorts it as its own runner does. Since API 99.
+    waitState: v.optional(v.string()),
     // Since API 29: when the backend last wrote the row, so a watching
     // runner reads only rows changed since its last answer
     // (sync:threadIndexSince), and `deleted` marks a thread that's gone,
@@ -759,6 +782,8 @@ export const appSchema = defineSchema({
     runnerId: v.optional(v.string()),
   })
     .index('by_thread_seq', ['threadId', 'seq'])
+    // A runner key's newest row of its own in a thread (sync.ts messageHeads, Daybreak 178).
+    .index('by_thread_runner_seq', ['threadId', 'runnerId', 'seq'])
     .index('by_thread_pagedAt', ['threadId', 'pagedAt'])
     .index('by_pagedAt', ['pagedAt'])
     .index('by_runnerId', ['runnerId'])

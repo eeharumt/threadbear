@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { AgentArchive, archiveMcpServer, archiveMethods, buildLockOf, formatArchive, readSyncState, runtimeOf, sessionsFor, SESSIONS_FILE, STALE_MS, type SessionsFile } from '../../src/agent-archive.ts';
+import { AgentArchive, BACKUP_STALE_MS, LOW_DISK_BYTES, SERVER_SERVICE, serverProblems, archiveMcpServer, archiveMethods, buildLockOf, formatArchive, readSyncState, runtimeOf, sessionsFor, SESSIONS_FILE, STALE_MS, type SessionsFile } from '../../src/agent-archive.ts';
 import { mcpServerConfig } from '../../src/adapters/codex/adapter.ts';
 import type { ThreadRecord } from '../../src/store.ts';
 import { tmpDir } from '../helpers/fakes.ts';
@@ -81,7 +81,7 @@ test('tb status says when the sync has stopped, and not before', () => {
 
 type Call = { bin: string; args: string[] };
 
-function setup(opts: { server?: boolean; repo?: boolean; fail?: (c: Call) => boolean; hang?: (c: Call) => boolean; onLsRemote?: (home: string) => void; pushTo?: { host: string; node: string }[]; on?: () => boolean; answer?: (c: Call) => string | undefined } = {}) {
+function setup(opts: { health?: (url: string) => Promise<unknown>; platform?: string; server?: boolean; repo?: boolean; fail?: (c: Call) => boolean; hang?: (c: Call) => boolean; onLsRemote?: (home: string) => void; pushTo?: { host: string; node: string }[]; on?: () => boolean; answer?: (c: Call) => string | undefined } = {}) {
   const root = tmpDir();
   const home = path.join(root, 'home');
   const dir = path.join(root, 'aa');
@@ -94,6 +94,7 @@ function setup(opts: { server?: boolean; repo?: boolean; fail?: (c: Call) => boo
   const calls: Call[] = [];
   let sha = 'a'.repeat(40);
   const onLsRemote = opts.onLsRemote;
+  const clock = { now: T1 };
   const a = new AgentArchive({
     home,
     log: noLog,
@@ -106,7 +107,9 @@ function setup(opts: { server?: boolean; repo?: boolean; fail?: (c: Call) => boo
     dir,
     serverDir: sdir,
     cacheDir: path.join(root, 'cache'),
-    now: () => T1,
+    now: () => clock.now,
+    uid: 501,
+    health: opts.health ?? (async () => ({ ok: true, release: 'c'.repeat(40) })),
     run: async (bin, args, o) => {
       const c = { bin, args };
       calls.push(c);
@@ -118,11 +121,11 @@ function setup(opts: { server?: boolean; repo?: boolean; fail?: (c: Call) => boo
         onLsRemote?.(home);
         return `${sha}\trefs/heads/main\n`;
       }
-      if (args.includes('status')) return '{"service":"running"}';
+      if (args.includes('status')) return '{"service":"running","archiveUrl":"https://bruce:9443"}';
       return '';
     },
   });
-  return { a, home, dir, cacheDir: path.join(root, 'cache'), calls, setSha: (s: string) => (sha = s) };
+  return { a, home, dir, clock, cacheDir: path.join(root, 'cache'), calls, setSha: (s: string) => (sha = s) };
 }
 
 const isInstall = (c: Call) => c.args.some((x) => x === 'install-runtime' || x.includes('install-runtime'));
@@ -281,4 +284,62 @@ test('a runner stopping for good stops its build, lets the lock go and marks not
   assert.equal(fs.existsSync(path.join(dir, name)), false);
   assert.equal(s.a.status()?.update?.failedSha, undefined);
   assert.equal(s.calls.filter(isInstall).length, 0);
+});
+
+test("the archive server's health: what's wrong is said, and a healthy one says nothing", () => {
+  const now = T1.getTime();
+  const ago = (ms: number) => `${Math.round(ms / 86_400_000)} days`;
+  assert.deepEqual(serverProblems({ ok: true, disk: { freeBytes: 29e9 }, backups: { lastBackup: { ok: true, finishedAt: now - 3_600_000 } } }, now, ago), []);
+  assert.deepEqual(serverProblems({ ok: true }, now, ago), [], 'an older server that says less');
+  assert.deepEqual(
+    serverProblems({ ok: false, deploys: { lastDeploy: { ok: false, sha: 'abcdef123456' }, lastPoll: { ok: false } }, backups: { lastBackup: { ok: true, finishedAt: now - BACKUP_STALE_MS - 86_400_000 }, lastRestoreTest: { ok: false } }, disk: { freeBytes: LOW_DISK_BYTES / 2 } }, now, ago),
+    ['it says it is not healthy', 'its last deploy (abcdef1) failed', "its deployer can't reach the archive's repo", 'its last backup was 3 days ago', 'its last restore test failed', 'only 5.0 GB of disk left'],
+  );
+  assert.deepEqual(serverProblems({ ok: true, backups: { lastBackup: { ok: false } } }, now, ago), ['its last backup failed']);
+  assert.deepEqual(serverProblems('nope', now, ago), ["its health check didn't answer in JSON"]);
+});
+
+test("tb status says whether the sync's archive server answers", async () => {
+  const ago = (ms: number) => `${Math.round(ms / 60_000)}m`;
+  const ok = setup({ repo: false });
+  await ok.a.tick();
+  assert.match(formatArchive(ok.a.status()!, T1.getTime(), ago), /Its archive server is healthy on ccccccc\.$/);
+  const sick = setup({ repo: false, health: async () => ({ ok: true, disk: { freeBytes: 1024 ** 3 } }) });
+  await sick.a.tick();
+  assert.match(formatArchive(sick.a.status()!, T1.getTime(), ago), /Its archive server answers, but only 1\.0 GB of disk left\./);
+  const down = setup({ repo: false, health: async () => { throw new Error('ECONNREFUSED'); } });
+  await down.a.tick();
+  down.clock.now = new Date(T1.getTime() + 10 * 60_000);
+  await down.a.tick();
+  assert.equal(down.a.status()!.server?.downSince, T1.getTime(), 'down since the first failed check');
+  assert.match(formatArchive(down.a.status()!, down.clock.now.getTime(), ago), /Its archive server isn't answering, for 10m \(ECONNREFUSED\)\./);
+  assert.equal(down.calls.some((c) => c.bin === 'launchctl'), false, 'not its machine, so never started from here');
+});
+
+test("on the server's own machine, a server down two checks running and not running is started, once an hour", { skip: process.platform !== 'darwin' }, async () => {
+  let running = false;
+  const t = setup({ server: true, repo: false, health: async () => { throw new Error('ECONNREFUSED'); }, answer: (c) => (c.bin === 'launchctl' && c.args[0] === 'print' ? (running ? 'state = running\n\tpid = 123\n' : 'state = not running\n') : undefined) });
+  const kicks = () => t.calls.filter((c) => c.bin === 'launchctl' && c.args[0] === 'kickstart');
+  await t.a.tick();
+  assert.equal(kicks().length, 0, 'one failed check could be a deploy swapping releases');
+  t.clock.now = new Date(T1.getTime() + 10 * 60_000);
+  await t.a.tick();
+  assert.deepEqual(kicks().map((c) => c.args), [['kickstart', `gui/501/${SERVER_SERVICE}`]], 'never -k: a running server is never stopped');
+  t.clock.now = new Date(T1.getTime() + 20 * 60_000);
+  await t.a.tick();
+  assert.equal(kicks().length, 1, 'not again within the hour');
+  assert.match(formatArchive(t.a.status()!, t.clock.now.getTime(), (ms) => `${Math.round(ms / 60_000)}m`), /started it again 10m ago/);
+  running = true;
+  t.clock.now = new Date(T1.getTime() + 90 * 60_000);
+  await t.a.tick();
+  assert.equal(kicks().length, 1, 'running but not answering is left alone');
+});
+
+test("on the server's own machine, a service that isn't loaded is left out, and says so", { skip: process.platform !== 'darwin' }, async () => {
+  const t = setup({ server: true, repo: false, health: async () => { throw new Error('ECONNREFUSED'); }, fail: (c) => c.bin === 'launchctl' });
+  await t.a.tick();
+  t.clock.now = new Date(T1.getTime() + 10 * 60_000);
+  await t.a.tick();
+  assert.equal(t.calls.some((c) => c.args[0] === 'kickstart'), false);
+  assert.match(formatArchive(t.a.status()!, t.clock.now.getTime(), (ms) => `${Math.round(ms / 60_000)}m`), /Starting it again failed: its service isn't loaded/);
 });

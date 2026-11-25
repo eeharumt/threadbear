@@ -4,7 +4,6 @@
 // web panel's page is, but it lives in the sealed pages' request context (no
 // network, keeps nothing: sealed.rs) and every request it makes is answered
 // here or cancelled.
-use super::panel::Shared;
 use crate::preview_rules::{asked_address, may_browse, may_request, own_path, policy, PreviewSite};
 use cef::*;
 use std::os::raw::c_int;
@@ -170,9 +169,14 @@ wrap_resource_handler! {
     }
 }
 
+/// What a preview does when its page closes: the panel fails the calls still
+/// waiting on it. A callback rather than the panel's own state, so this file
+/// needn't know the panel (deslop-please's module-cycle).
+pub(crate) type OnClose = Arc<dyn Fn(&str) + Send + Sync>;
+
 wrap_life_span_handler! {
     pub(crate) struct PreviewLife {
-        shared: Arc<Shared>,
+        on_close: OnClose,
     }
 
     impl LifeSpanHandler {
@@ -202,7 +206,7 @@ wrap_life_span_handler! {
         }
 
         fn on_before_close(&self, _browser: Option<&mut Browser>) {
-            self.shared.fail_calls("its page closed");
+            (self.on_close)("its page closed");
         }
     }
 }

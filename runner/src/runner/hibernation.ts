@@ -8,7 +8,7 @@ import type { PermissionMode, ReviewFinding, ThreadSummary } from '../protocol.t
 import { ErrorCode, RpcError } from '../protocol.ts';
 import { LATE_CHECKS_MAX, LATE_CHECK_LOST, SAID_MAX, WAKE_SYSTEM, awayFor, hibernateNote, lateCheckPrompt, lateChecksOf, lateNews, lateSleepMs, lateWait, lateWhy, localWhen, readWakeAnswer, topicCheckNews, wakePrompt, type LateWait } from '../wake-when.ts';
 import type { ThreadState } from '../runner.ts';
-import { NO_WAKE_TIME } from '../runner.ts';
+import { NO_WAKE_TIME } from './timings.ts';
 import { parseWhen } from '../when.ts';
 import { parkRecord, placeOf, wakesOnStart, type PlaceEvent } from '../place.ts';
 import type { WaitFor } from '../needs.ts';
@@ -61,7 +61,7 @@ export const hibernationPart = {
       this.markDirty(st);
     }
     const input = { said, now: this.clock.now(), timeZone, title: st.rec.title, first: gist.first, brief: st.rec.brief?.text, ...(by ? { by } : {}) };
-    this.update({ threadId: st.rec.id, snoozedUntil: NO_WAKE_TIME });
+    this.update({ threadId: st.rec.id, snoozedUntil: NO_WAKE_TIME, noted: true });
     this.park(st, { kind: 'wordsAsked', said, ...(by ? { by } : {}) });
     this.markDirty(st);
     const ask = (withThread: boolean) =>
@@ -281,7 +281,7 @@ export const hibernationPart = {
       }
     }
     if (!until || Date.parse(until) <= now) until = new Date(now + WAIT_FOR_DEFAULT_MS).toISOString();
-    this.update({ threadId: rec.id, snoozedUntil: until });
+    this.update({ threadId: rec.id, snoozedUntil: until, noted: true });
     const by = leastAuthority(askedBy, this.authorityNow(rec.id));
     // Refused only if it has woken already (its time passed meanwhile).
     if (!this.park(st, { kind: 'waitOn', waits: list.map((x) => ({ ...x, by })) })) return;
@@ -394,7 +394,7 @@ export const hibernationPart = {
       // away now, as a single review is once it's back, rather than sitting
       // in the inbox (Gemini's review of the panel, 19 Nov 2026). Its wait
       // is already done, with its reply and verdict.
-      for (const id of putAway) this.update({ threadId: id, archived: true, archivedBy: 'threadbear' });
+      for (const id of putAway) this.update({ threadId: id, archived: true, archivedBy: 'threadbear', why: 'its review went back to the thread that asked for it' });
     }
   },
 
@@ -511,7 +511,7 @@ export const hibernationPart = {
     this.sendTo(st, text, [], { origin: 'runner', queue: true, ceiling: ceilingMode(this.authorityNow(st.rec.id).mode) });
     this.log.info('woke after a lab review', { threadId: st.rec.id, reviewer: w.threadId });
     if (reviewer && !reviewer.rt.deleted && !reviewer.rec.archivedAt && !reviewer.rt.turn) {
-      this.update({ threadId: w.threadId, archived: true, archivedBy: 'threadbear' });
+      this.update({ threadId: w.threadId, archived: true, archivedBy: 'threadbear', why: 'its review went back to the thread that asked for it' });
     }
   },
 
@@ -555,7 +555,7 @@ export const hibernationPart = {
     this.log.info('woke after a review panel', { threadId: st.rec.id, reviewers: waits.map((w) => w.threadId) });
     for (const { w, reviewer } of parts) {
       if (reviewer && !reviewer.rt.deleted && !reviewer.rec.archivedAt && !reviewer.rt.turn) {
-        this.update({ threadId: w.threadId, archived: true, archivedBy: 'threadbear' });
+        this.update({ threadId: w.threadId, archived: true, archivedBy: 'threadbear', why: 'its review went back to the thread that asked for it' });
       }
     }
   },

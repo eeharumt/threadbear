@@ -360,7 +360,7 @@ export const labReviewPart = {
 // The login with room a review of `rec` can run on, for a provider: in the
 // pool its folder is kept for, if it is, else in the open pools or outside
 // any.
-export function reviewPicker(runner: Runner, rec: ThreadRecord): (provider: Provider) => Account | undefined {
+function reviewPicker(runner: Runner, rec: ThreadRecord): (provider: Provider) => Account | undefined {
   const accounts = runner.usableAccounts();
   const pools = runner.pools();
   // Kept for its folder, or for the folder it came from: a thread's

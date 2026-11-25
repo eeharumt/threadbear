@@ -179,11 +179,13 @@ type ThreadSummary = {
   live: boolean         // a CLI process is attached right now
   needsYou: boolean     // waiting, or a turn finished after lastSeenSeq
                         // that didn't end with needs "nothing", with no
-                        // sub-agents still working (Needs you)
+                        // sub-agents still working, nor a shell job its
+                        // asks wait for (Needs you)
   needs?: "you" | "nothing" // what the last completed turn said; absent
                         // when it said neither (see Needs you)
   asks?: OpenAsk[]      // that turn's asks, when needs is "you"
   asksSeq?: number      // seq of the turn.completed they came with
+  asksAfterJobs?: true  // those asks wait until the thread's own shell jobs end (Needs you)
   createdAt: string
   updatedAt: string
   lastActivityAt: string
@@ -217,13 +219,6 @@ type ThreadSummary = {
                         // nest under it in the sidebar (Nested threads)
   asked?: string        // Mike's last message to it, one line, <= 140 chars
                         // (What Mike last asked)
-  request?: string      // Mike's first message to it, one line, <= 200
-                        // chars (What Mike first asked)
-  everyone?: { members: { provider, name, threadId }[],
-               missing?: { provider, name, why: "notSignedIn" | "noRoom" | "failed" }[] }
-                        // a panel's lead: the other labs asked the same
-                        // question, and those left out (For everyone)
-  everyoneOf?: string   // a panel member: its lead's id (For everyone)
   keywords?: string     // the librarian's search words, lowercase and
                         // space-separated, <= 200 chars (Search)
   woke?: { at: string, since?: string } // came back from hibernating by

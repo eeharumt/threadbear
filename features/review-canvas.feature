@@ -49,3 +49,28 @@ Feature: The review as a canvas
     When I open the review
     And I click low in the review's reply box
     Then the review's reply box has the keys
+
+  # Mike, 24 Nov 2026: comparing music beds, each option a clip, a
+  # double-click took him off the board to the stage to hear one. A clip or
+  # a page now plays where it sits, with its sound and controls, one at a time.
+  @review.canvas @review.media @swift-pending @windows-pending @linux-pending
+  Scenario: A clip plays where it sits on the board
+    Given the agent shows options with several shots each
+    When I open that review
+    And the board flies to option "C"
+    And I press "Play C. Account pools here" on the board
+    Then the board plays a clip in place
+    When I press "Stop C. Account pools" on the board
+    Then nothing plays on the board
+
+  # A sound is its waveform with the pane's play bar along its bottom,
+  # started by Play (on the stage it waits, paused, as you step through).
+  @review.canvas @review.media @swift-pending @windows-pending @linux-pending
+  Scenario: A sound plays where it sits on the board
+    Given the agent shows options with several shots each
+    When I open that review
+    And the board flies to option "B", shot 3
+    And I press "Play B. One picker, shot 3 here" on the board
+    Then the board plays a sound in place
+    When I press "Stop B. One picker, shot 3" on the board
+    Then nothing plays on the board

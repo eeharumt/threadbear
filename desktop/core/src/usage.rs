@@ -1699,15 +1699,22 @@ pub struct Unknown {
 }
 
 /// Why there's no reading, by provider. Claude and Codex report theirs on
-/// every turn, so one with none hasn't run a turn here. Grok's CLI shows its
-/// plan's limit only through its background service (`grok usage`), which
-/// Threadbear doesn't run; OpenCode's own models bill a balance.
+/// every turn, so one with none hasn't run a turn here. The runner reads a
+/// Grok login's plan from Grok a minute after it starts (`_x.ai/billing`,
+/// since 24 Nov 2026), and a Gemini login's from its own `/usage` every 10
+/// minutes and after each of its turns (since 23 Nov 2026), so one with none
+/// hasn't been read yet (or its answer didn't read); OpenCode's own models
+/// bill a balance.
 pub fn unknown_reason(provider: &str, provider_name: &str) -> Unknown {
     let (text, tip) = match provider {
         "claude" | "codex" | "" => ("No turn has run on it yet".to_owned(), "Its limit shows after its first turn here".to_owned()),
+        "antigravity" => (
+            "No reading from Gemini yet".to_owned(),
+            "Threadbear asks Gemini how much of your Google plan is left every 10 minutes and after each Gemini turn".to_owned(),
+        ),
         "grok" => (
-            "Grok reports its limit only from its background service".to_owned(),
-            "Threadbear reads each login's limit from what its turns report. Grok's turns don't carry it, and its CLI shows it only through Grok's background service".to_owned(),
+            "Not read yet".to_owned(),
+            "Threadbear asks Grok how much of its plan is left a minute after the runner starts, and after Grok turns".to_owned(),
         ),
         "opencode" => ("Pay as you go, no weekly limit".to_owned(), "OpenCode's own models spend a balance rather than a weekly limit, and its turns don't report either".to_owned()),
         _ => (format!("{provider_name} doesn't report its limit"), "Threadbear reads each login's limit from what its turns report".to_owned()),
@@ -3422,7 +3429,7 @@ mod tests {
         assert_eq!(grok.headline, None);
         assert_eq!(
             grok.unknown.as_ref().map(|u| u.text.as_str()),
-            Some("Grok reports its limit only from its background service")
+            Some("Not read yet")
         );
         assert_eq!(
             row_for(bare("oc", "opencode"), now).unknown.map(|u| u.text),

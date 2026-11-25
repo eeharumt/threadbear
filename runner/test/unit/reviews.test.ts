@@ -413,7 +413,74 @@ test('a shot can be a video or an HTML page: copied with a still, and the page b
   assert.ok(fs.existsSync(b.shots![1].image.path));
   const notes=path.join(h.home,'notes.txt');
   fs.writeFileSync(notes,'plain text');
-  assert.throws(()=>h.runner.createReview(thread.id,{title:'Bad',options:[{id:'X',title:'Text',path:notes}]}),/video \(MP4, MOV\) or HTML page/);
+  assert.throws(()=>h.runner.createReview(thread.id,{title:'Bad',options:[{id:'X',title:'Text',path:notes}]}),/video \(MP4, MOV\), sound \(MP3, M4A, AAC, WAV\) or HTML page/);
+});
+
+// Mike, 24 Nov: comparing music beds and sounds as options.
+function fakeSounds(): Record<string, Buffer> {
+  const wav = Buffer.alloc(44);
+  wav.write('RIFF', 0, 'ascii');
+  wav.writeUInt32LE(36, 4);
+  wav.write('WAVEfmt ', 8, 'ascii');
+  const m4a = Buffer.alloc(16);
+  m4a.writeUInt32BE(16, 0);
+  m4a.write('ftypM4A ', 4, 'ascii');
+  return {
+    'bed.mp3': Buffer.concat([Buffer.from('ID3\x04\0\0\0\0\0\0', 'latin1'), Buffer.alloc(16)]),
+    'frames.mp3': Buffer.concat([Buffer.from([0xff, 0xfb, 0x90, 0x64]), Buffer.alloc(16)]),
+    'bed.m4a': m4a,
+    'isom.m4a': fakeMp4(),
+    'raw.aac': Buffer.concat([Buffer.from([0xff, 0xf1, 0x50, 0x80]), Buffer.alloc(16)]),
+    'ding.wav': wav,
+  };
+}
+
+test('a shot can be a sound: sniffed by its bytes, copied with its waveform or a card, and over 100 MB refused', (t) => {
+  t.mock.method(stills,'quickLook',(file:string)=>{ assert.ok(file.endsWith('.mp4'),'a sound’s still is its waveform, not Quick Look’s'); return undefined; });
+  const waves=t.mock.method(stills,'ffmpegWaveform',()=>undefined);
+  const {h,thread}=fixture();
+  const sounds=fakeSounds();
+  for (const [name,bytes] of Object.entries(sounds)) fs.writeFileSync(path.join(h.home,name),bytes);
+  const {review}=h.runner.createReview(thread.id,{title:'Beds',options:Object.keys(sounds).map((name,i)=>({id:String(i),title:name,path:path.join(h.home,name)}))});
+  assert.deepEqual(review.options.map(o=>o.shots?.[0].media?.mediaType),['audio/mpeg','audio/mpeg','audio/mp4','audio/mp4','audio/aac','audio/wav']);
+  assert.deepEqual(review.options.map(o=>path.extname(o.shots![0].media!.path)),['.mp3','.mp3','.m4a','.m4a','.aac','.wav']);
+  for (const [i,o] of review.options.entries()) {
+    assert.deepEqual(fs.readFileSync(o.shots![0].media!.path),Object.values(sounds)[i]);
+    assert.ok(o.image.width&&o.image.height&&fs.existsSync(o.image.path),'the dark card when ffmpeg can’t draw it');
+  }
+  assert.equal(waves.mock.callCount(),6);
+  // An MP4 named .mp4 is still a video, and a waveform ffmpeg draws is the still.
+  t.mock.method(stills,'ffmpegFrame',()=>undefined);
+  const clip=path.join(h.home,'clip.mp4');
+  fs.writeFileSync(clip,fakeMp4());
+  waves.mock.mockImplementation((_file:string,out:string)=>{ const p=path.join(out,'wave.png'); fs.writeFileSync(p,makePng(160,90)); return p; });
+  const two=h.runner.createReview(thread.id,{title:'Mixed',options:[{id:'A',title:'Clip',path:clip},{id:'B',title:'Bed',path:path.join(h.home,'bed.mp3')}]}).review;
+  assert.equal(two.options[0].shots?.[0].media?.mediaType,'video/mp4');
+  assert.deepEqual([two.options[1].image.width,two.options[1].image.height],[160,90]);
+  const big=path.join(h.home,'long.wav');
+  fs.writeFileSync(big,sounds['ding.wav']);
+  fs.truncateSync(big,100*1024*1024+1);
+  assert.throws(()=>h.runner.createReview(thread.id,{title:'Big',options:[{id:'A',title:'Long',path:big}]}),/sound must be at most 100 MB/);
+});
+
+test('a moved review keeps a sound only by its name and bytes', () => {
+  const root=fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()),'tb-moved-sound-'));
+  const id='0f9e8d7c-1111-4222-8333-444455556666';
+  const rid='5a4b3c2d-aaaa-4bbb-8ccc-ddddeeeeffff';
+  const now=path.join(root,'media');
+  const media={threadId:id,now,final:now};
+  fs.mkdirSync(path.join(now,'reviews',rid),{recursive:true});
+  fs.writeFileSync(path.join(now,'reviews',rid,'still.png'),makePng(12,8));
+  const sounds=fakeSounds();
+  for (const name of ['bed.mp3','bed.m4a','ding.wav']) fs.writeFileSync(path.join(now,'reviews',rid,name),sounds[name]);
+  // A sound's bytes under a page's name, and a page's under a sound's.
+  fs.writeFileSync(path.join(now,'reviews',rid,'bed.svg'),sounds['ding.wav']);
+  fs.writeFileSync(path.join(now,'reviews',rid,'page.wav'),'<script>x()</script>');
+  const theirs=(rest:string,mediaType='image/png')=>({path:`/home/someone/.threadbear/threads/${id}/media/reviews/${rid}/${rest}`,mediaType});
+  const fitted=fitReview({id:rid,title:'T',status:'pending',revision:1,createdAt:'c',updatedAt:'c',draft:{notes:{}},
+    options:[{id:'A',title:'A',image:theirs('still.png'),shots:['bed.mp3','bed.m4a','ding.wav','bed.svg','page.wav'].map(f=>({image:theirs('still.png'),media:theirs(f,'audio/mpeg')}))}]},media)!;
+  assert.deepEqual(fitted.options[0]!.shots!.map(s=>s.media?.mediaType),['audio/mpeg','audio/mp4','audio/wav',undefined,undefined]);
+  fs.rmSync(root,{recursive:true,force:true});
 });
 
 // Mike, 7 Nov: a mockup with ✓ and no charset showed "âœ“" in the review

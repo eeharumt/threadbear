@@ -365,8 +365,19 @@ test('a record counts for a week', () => {
 const PASSES = "import { test } from 'node:test';\ntest('ok', () => {});\n";
 const FAILS = "import { test } from 'node:test';\nimport assert from 'node:assert/strict';\ntest('broken', () => assert.equal(1, 2));\n";
 
+// Its HOME and temp folder are a folder of their own, beside the checkout,
+// and every tool a step asks for its version has a stand-in (bin/). From 22
+// Nov 2026 HOME was the checkout itself and rustc the real one: on GitHub's
+// Macs that's Homebrew's rustup, which, asked its version with a HOME it had
+// never seen, installed a whole toolchain into it (17 s). A checkout with no
+// .git is hashed file by file, before the run and after every step, so each
+// of this file's 19 runs of check.sh then hashed that toolchain 3 to 15
+// times, 15 to 35 s a time: 17 minutes for this one file, where Linux took
+// 21 s. runner.yml's Mac jobs went from 17 to 20 minutes to over their 30,
+// 18 runs in a row, and GitHub called each cancelled, not failed.
 function checkout() {
   const root = tmp('run');
+  const home = tmp('home');
   const put = writer(root);
   const copy = (rel: string, mode?: number) => put(rel, fs.readFileSync(path.join(repo, rel), 'utf8'), mode);
   copy('check.sh', 0o755);
@@ -376,6 +387,8 @@ function checkout() {
   copy('scripts/limit-step.mjs');
   copy('runner/test/helpers/failed-files-reporter.mjs');
   copy('runner/test/helpers/passed-files-reporter.mjs');
+  copy('runner/test/helpers/progress-reporter.mjs');
+  copy('runner/test/helpers/run-test-files.mjs');
   put('runner/package.json', JSON.stringify({ scripts: { typecheck: 'true' } }));
   put('runner/node_modules/.package-lock.json', '{}');
   put('runner/test/helpers/clean-env.ts', '');
@@ -389,25 +402,32 @@ function checkout() {
   put('mock-runner/node_modules/.package-lock.json', '{}');
   put('desktop/.keep', '');
   put('bin/swift', '#!/bin/bash\n', 0o755);
-  put('bin/cargo', '#!/bin/bash\n', 0o755);
-  const records = process.platform === 'darwin' ? path.join(root, 'Library', 'Caches', 'Threadbear', 'check-passes') : path.join(root, '.cache', 'threadbear', 'check-passes');
-  return { root, put, records };
+  // rustc beside cargo, where its version is asked before the PATH's
+  // (toolVersion). Each writes down how it was asked its version for a key.
+  put('bin/cargo', '#!/bin/bash\n[ "$*" != "--version --verbose" ] || echo "cargo ${RUSTUP_AUTO_INSTALL:-may install}" >>"$HOME/versions-asked"\n', 0o755);
+  put('bin/rustc', '#!/bin/bash\necho "rustc ${RUSTUP_AUTO_INSTALL:-may install}" >>"$HOME/versions-asked"\n', 0o755);
+  const records = process.platform === 'darwin' ? path.join(home, 'Library', 'Caches', 'Threadbear', 'check-passes') : path.join(home, '.cache', 'threadbear', 'check-passes');
+  const remove = () => {
+    fs.rmSync(root, { recursive: true, force: true });
+    fs.rmSync(home, { recursive: true, force: true });
+  };
+  return { root, home, put, records, remove };
 }
 
-function run(c: { root: string, records: string }, flags: string[] = ['--quick'], extra: NodeJS.ProcessEnv = {}) {
+function run(c: { root: string, home: string }, flags: string[] = ['--quick'], extra: NodeJS.ProcessEnv = {}) {
   const list = path.join(c.root, '.changed');
   fs.writeFileSync(list, 'runner/src/one.ts\n');
   const env: NodeJS.ProcessEnv = {
     ...process.env, PATH: `${path.join(c.root, 'bin')}:${process.env.PATH}`,
-    THREADBEAR_CHECK_CHANGED_FILE: list, THREADBEAR_NODE: process.execPath, TMPDIR: c.root, HOME: c.root,
-    XDG_CACHE_HOME: path.join(c.root, '.cache'),
+    THREADBEAR_CHECK_CHANGED_FILE: list, THREADBEAR_NODE: process.execPath, TMPDIR: c.home, HOME: c.home,
+    XDG_CACHE_HOME: path.join(c.home, '.cache'),
   };
   delete env.GITHUB_ACTIONS;
   for (const k of Object.keys(env)) if (/^THREAD(BEAR|BARE)_(CHECK_|HOME$)/.test(k) && k !== 'THREADBEAR_CHECK_CHANGED_FILE') delete env[k];
   delete env.NODE_TEST_CONTEXT;
   // As a thread's tb land runs it: THREADBEAR_HOME is the real one (this
   // test's HOME's), so the records go in the real folder.
-  env.THREADBEAR_HOME = path.join(c.root, 'Library', 'Application Support', 'Threadbear');
+  env.THREADBEAR_HOME = path.join(c.home, 'Library', 'Application Support', 'Threadbear');
   Object.assign(env, extra);
   const r = spawnSync('bash', [path.join(c.root, 'check.sh'), ...flags, '--local'], { env, encoding: 'utf8', timeout: 120_000 });
   return { status: r.status, out: (r.stdout ?? '') + (r.stderr ?? '') };
@@ -423,6 +443,14 @@ test('check.sh skips what passed with the same inputs, says so, and runs what ch
     assert.match(line(first.out, 'runner unit tests'), /^ok/, first.out);
 
     assert.equal(fs.readdirSync(path.join(c.records, 'tests')).length, 2, 'both test files recorded');
+    // No real tool ran with the made-up HOME and left its own files there
+    // (rustup's toolchains), and what's hashed as the checkout is still the
+    // few files put there, not what a run writes to its HOME or temp folder
+    // (npm's logs and cache, node's compile cache, check.sh's own logs).
+    assert.deepEqual(fs.readdirSync(c.home).filter((n) => /^\.(rustup|cargo)$/.test(n)), []);
+    // And a real rustup asked a version for a key is told to install nothing.
+    assert.deepEqual([...new Set(fs.readFileSync(path.join(c.home, 'versions-asked'), 'utf8').trim().split('\n'))].sort(), ['cargo 0', 'rustc 0']);
+    assert.ok(treeOf(c.root).size < 40, [...treeOf(c.root).keys()].join('\n'));
     const again = run(c);
     assert.equal(again.status, 0, again.out);
     // (When; a check host's copy is always on main, so it says no branch.)
@@ -498,16 +526,16 @@ test('check.sh skips what passed with the same inputs, says so, and runs what ch
     assert.match(line(changed.out, 'runner unit tests'), /^ok/, changed.out);
     assert.doesNotMatch(changed.out, /skipped \d+ test files/);
   } finally {
-    fs.rmSync(c.root, { recursive: true, force: true });
+    c.remove();
   }
 });
 
 test("GitHub's runs read no records, and no test file inherits the records folder a check names", () => {
   const c = checkout();
   try {
-    const seen = path.join(c.root, 'seen');
+    const seen = path.join(c.home, 'seen');
     c.put('runner/test/unit/env.test.ts', `import { test } from 'node:test';\nimport fs from 'node:fs';\ntest('env', () => fs.appendFileSync(${JSON.stringify(seen)}, (process.env.THREADBEAR_CHECK_PASSES ?? 'unset') + '\\n'));\n`);
-    const named = path.join(c.root, 'named-records');
+    const named = path.join(c.home, 'named-records');
     const first = run(c, ['--quick'], { THREADBEAR_CHECK_PASSES: named });
     assert.equal(first.status, 0, first.out);
     assert.deepEqual(fs.readFileSync(seen, 'utf8').trim().split('\n'), ['unset']);
@@ -518,12 +546,16 @@ test("GitHub's runs read no records, and no test file inherits the records folde
     const gh = run(c, ['--quick'], { THREADBEAR_CHECK_PASSES: named, GITHUB_ACTIONS: 'true' });
     assert.equal(gh.status, 0, gh.out);
     assert.doesNotMatch(gh.out, /skipped:/, gh.out);
+    // And there the unit tests say where they are as they go, into the
+    // job's log (progress-reporter.mjs): here, the slowest files at the end.
+    assert.match(gh.out, /^ {8}slowest test files: .*\bone\.test\.ts \d+s.*\nok +runner unit tests/m, gh.out);
+    assert.doesNotMatch(first.out, /slowest test files/, first.out);
     // A run with a data dir of its own (a test's) keeps none.
-    const own = run(c, ['--quick'], { THREADBEAR_HOME: path.join(c.root, 'other-home') });
+    const own = run(c, ['--quick'], { THREADBEAR_HOME: path.join(c.home, 'other-home') });
     assert.doesNotMatch(own.out, /skipped:/, own.out);
     assert.ok(!fs.existsSync(c.records));
   } finally {
-    fs.rmSync(c.root, { recursive: true, force: true });
+    c.remove();
   }
 });
 

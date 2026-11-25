@@ -167,7 +167,7 @@ impl ReviewWindow {
                 .relative()
                 .flex_none()
                 .child(
-                    super::stage::thumb(&option.image, TAB_THUMB.0, TAB_THUMB.1, 4., cx)
+                    super::parts::thumb(&option.image, TAB_THUMB.0, TAB_THUMB.1, 4., cx)
                         .opacity(if current { 1. } else { 0.7 }),
                 )
                 .when(current, |s| {
@@ -271,7 +271,7 @@ impl ReviewWindow {
                             .font_weight(FontWeight::SEMIBOLD)
                             .child(option.label()),
                     )
-                    .when(recommended, |s| s.child(recommended_mark(cx)))
+                    .when(recommended, |s| s.child(super::parts::recommended_mark(cx)))
                     .when(!place.is_empty(), |s| {
                         s.child(
                             div()
@@ -347,11 +347,14 @@ impl ReviewWindow {
                     tip,
                 )
                 .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| this.pick(&id, cx)))
-                .child(checkbox(picked, accent, cx))
+                .child(super::parts::checkbox(picked, accent, cx))
                 .into_any_element(),
             );
         }
-        picked.then(|| slot.child(checkbox(true, accent, cx)).into_any_element())
+        picked.then(|| {
+            slot.child(super::parts::checkbox(true, accent, cx))
+                .into_any_element()
+        })
     }
 
     // The answer.
@@ -453,7 +456,11 @@ impl ReviewWindow {
                     .on_token_click(move |event, window, cx| {
                         if let Some(this) = click_owner.upgrade() {
                             this.update(cx, |this, cx| {
-                                this.open_reply_picture(event.token().id(), window, cx)
+                                let id = event.token().id();
+                                match this.reply_chip_mark(id) {
+                                    Some(n) => this.canvas_show_mark(n, cx),
+                                    None => this.open_reply_picture(id, window, cx),
+                                }
                             });
                         }
                     })
@@ -655,53 +662,5 @@ pub(crate) fn inline_note(
         .on_click(ranges, move |ix, _, cx| {
             crate::open_gate::open_link(&urls[ix], Origin::ThisMac, &cwd, cx)
         })
-        .into_any_element()
-}
-
-/// A tick box: an outline, or filled with the accent and a white tick.
-pub(super) fn checkbox(on: bool, accent: Hsla, cx: &App) -> AnyElement {
-    if on {
-        return div()
-            .size(px(14.))
-            .rounded(px(3.5))
-            .bg(accent)
-            .flex()
-            .items_center()
-            .justify_center()
-            .child(
-                Icon::new(IconName::Check)
-                    .with_size(px(11.))
-                    .text_color(gpui_kit::white()),
-            )
-            .into_any_element();
-    }
-    div()
-        .size(px(14.))
-        .rounded(px(3.5))
-        .border(px(1.2))
-        .border_color(style::secondary_text(cx))
-        .into_any_element()
-}
-
-/// The agent's pick: a small gold star and "Recommended" in grey, as on an
-/// asks card (after Ghostex's, Mike, 9 Nov).
-pub(super) fn recommended_mark(cx: &App) -> AnyElement {
-    // On the name's line, as the Swift mark is text run on from the name.
-    h_flex()
-        .flex_none()
-        .gap(px(3.))
-        .items_center()
-        .child(
-            crate::icons::symbol("star.fill")
-                .with_size(px(11.))
-                .text_color(style::recommended_star(cx)),
-        )
-        .child(
-            div()
-                .text_size(px(style::size::DETAIL))
-                .line_height(px(style::natural_line(style::size::WORK)))
-                .text_color(style::secondary_text(cx))
-                .child("Recommended"),
-        )
         .into_any_element()
 }

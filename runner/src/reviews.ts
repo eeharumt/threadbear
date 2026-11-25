@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expandHome } from './config.ts';
-import { readImageInfo, readVideoInfo } from './media.ts';
+import { readAudioInfo, readImageInfo, readVideoInfo } from './media.ts';
 import type { AgentMark, DesignReview, ImageRef, MarkBox, ReviewDraft, ReviewUserMark } from './protocol.ts';
 import { ErrorCode, RpcError } from './protocol.ts';
 
@@ -14,8 +14,9 @@ import { ErrorCode, RpcError } from './protocol.ts';
 // kind is worked out here from the file: a picture, a video (MP4 or
 // QuickTime) or an HTML page. The window plays a video and shows a page in
 // place of a still, as agents had to hand Mike stills of clips that only
-// made sense moving (6 Nov 2026).
-export type ReviewShotKind = 'image' | 'video' | 'page';
+// made sense moving (6 Nov 2026). A sound (MP3, M4A, AAC, WAV) plays too, as
+// Mike wanted to compare music beds (24 Nov 2026).
+export type ReviewShotKind = 'image' | 'video' | 'audio' | 'page';
 // marks: the agent's marks on the picture (the reviewCanvas experiment); an
 // option's own belong to its path shot.
 export type ReviewShotInput = { path: string; title?: string; kind?: ReviewShotKind; marks?: AgentMark[] };
@@ -26,8 +27,9 @@ export const maxReviewShots = 8;
 export const maxReviewImages = 40;
 const maxImageBytes = 25 * 1024 * 1024;
 const maxVideoBytes = 200 * 1024 * 1024;
+const maxAudioBytes = 100 * 1024 * 1024;
 const maxPageBytes = 5 * 1024 * 1024;
-// All of a review's videos and pages together, as each is copied in.
+// All of a review's videos, sounds and pages together, as each is copied in.
 export const maxReviewMediaBytes = 500 * 1024 * 1024;
 
 function bad(message: string): never {
@@ -59,12 +61,17 @@ function shotFile(raw: unknown, cwd: string): { path: string; kind: ReviewShotKi
     const info = readImageInfo(file);
     if (info?.width && info.height) return { path: file, kind: 'image', size };
   }
+  // Before videos: an M4A is an MP4 with no picture.
+  if (readAudioInfo(file)) {
+    if (size > maxAudioBytes) bad(`A sound must be at most 100 MB: ${file}`);
+    return { path: file, kind: 'audio', size };
+  }
   if (readVideoInfo(file)) {
     if (size > maxVideoBytes) bad(`A video must be at most 200 MB: ${file}`);
     return { path: file, kind: 'video', size };
   }
   if (size > maxImageBytes) bad(`An image must be at most 25 MB: ${file}`);
-  return bad(`Not a picture (PNG, JPEG, GIF, WebP), video (MP4, MOV) or HTML page: ${file}`);
+  return bad(`Not a picture (PNG, JPEG, GIF, WebP), video (MP4, MOV), sound (MP3, M4A, AAC, WAV) or HTML page: ${file}`);
 }
 
 // Marks on the pictures (docs/protocol/events.md, "Marks: the canvas"):
@@ -160,14 +167,14 @@ export function reviewInput(raw: unknown, cwd: string, opts: { marks?: boolean }
       const shot = s as Record<string, unknown>;
       add(shot.path, text(shot.title, 'shot title', 200), shot.marks);
     }
-    if (!shots.length) bad(`Option ${id} needs an image, video or page: a path or shots.`);
+    if (!shots.length) bad(`Option ${id} needs an image, video, sound or page: a path or shots.`);
     if (shots.length > maxReviewShots) bad(`Option ${id} has ${shots.length} images; at most ${maxReviewShots}.`);
     images += shots.length;
     return { id, title, shots, ...(note ? { note } : {}), ...(o.reference === true ? { reference: true } : {}), ...(url ? { url } : {}) };
   });
   if (images > maxReviewImages) bad(`A review can have at most ${maxReviewImages} images in all; this has ${images}.`);
   if (marks > maxReviewMarks) bad(`A review can have at most ${maxReviewMarks} marks in all; this has ${marks}. Mark only what needs pointing out.`);
-  if (mediaBytes > maxReviewMediaBytes) bad(`A review's videos and pages can be at most 500 MB in all; these are ${Math.ceil(mediaBytes / 1024 / 1024)} MB.`);
+  if (mediaBytes > maxReviewMediaBytes) bad(`A review's videos, sounds and pages can be at most 500 MB in all; these are ${Math.ceil(mediaBytes / 1024 / 1024)} MB.`);
   // The agent's own pick, which the window marks with a star and "Recommended" as an asks card
   // does (Mike, 7 Nov: agents wrote "I'd pick C" in the middle of the note,
   // where it was hard to find).
@@ -243,6 +250,7 @@ function movedRef(ref: unknown, reviewId: string, media: MovedMedia, still: bool
   // A page's copy may have a charset tag more than show_options took (withCharset).
   if (page) info = size <= maxPageBytes + 1024 ? { mediaType: 'text/html' } : null;
   else if (still) info = /\.(png|jpe?g|gif|webp)$/i.test(file.now) && size <= maxImageBytes ? readImageInfo(file.now) : null;
+  else if (/\.(mp3|m4a|aac|wav)$/i.test(file.now)) info = size <= maxAudioBytes ? readAudioInfo(file.now) : null;
   else info = /\.(mp4|m4v|mov)$/i.test(file.now) && size <= maxVideoBytes ? readVideoInfo(file.now) : null;
   if (!info) return undefined;
   const { width: _w, height: _h, ...rest } = ref as ImageRef;

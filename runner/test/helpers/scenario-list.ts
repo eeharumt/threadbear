@@ -178,19 +178,12 @@ export const SCENARIOS: Scenario[] = [
     },
   },
   {
-    name: "a For everyone lead hears a member's answer",
-    shows: ['Wait for one good release first.', 'Codex answered', 'Both say wait for one good release.'],
-    play: (p) => {
-      p.say('Wait for one good release first.');
-      p.endTurn({ needs: 'nothing' }, true);
-      p.panelAnswer('Codex', 'Wait: the last tag had an empty signature.');
-      p.say('Both say wait for one good release.');
-      p.endTurn({ needs: 'you', asks: [{ question: 'Revoke the old key now, or wait?', options: [{ label: 'Wait' }, { label: 'Revoke now' }], suggested: 0 }] });
-    },
-  },
-  {
     name: 'a thread the quiet inbox archived, brought back with Should have shown me',
-    shows: ['Renamed the setting.', 'Archived quietly', 'A receipt for what was asked.', 'Brought back by you: you should have been shown this.'],
+    // The notes saying it was archived and brought back are the Mac's own,
+    // like every archive note: only a login's notes go to the mirror
+    // (sync.ts toMessageDoc), so the phone, the website and another Mac
+    // show the reply alone (parity run, 23 Nov 2026).
+    shows: ['Renamed the setting.'],
     play: (p) => {
       p.say('Renamed the setting.');
       p.endTurn({ needs: 'nothing' });

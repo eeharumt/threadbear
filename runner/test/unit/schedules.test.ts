@@ -260,7 +260,9 @@ test('a new keyed send searches recent events and legacy sends do not scan histo
   const h = makeHarness();
   const { thread } = idleThread(h);
   const st = h.runner.mustGet(thread.id);
-  for (let i = 0; i < 1024; i++) h.runner.emit(st, { type: 'system.note', text: 'Earlier work' });
+  // More than one 128-event page of old history, so a full scan would read twice.
+  // Kept small: each emit writes to disk, and 1024 took 88 s on Windows CI.
+  for (let i = 0; i < 200; i++) h.runner.emit(st, { type: 'system.note', text: 'Earlier work' });
   h.clock.advance(10 * MIN);
   const log = h.store.log(thread.id);
   const read = log.read.bind(log);

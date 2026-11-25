@@ -22,6 +22,8 @@ test('phone reviews keep choices and labels without exposing local paths or HTML
   assert.equal(dto.options[1].reference, true);
   assert.equal(dto.options[0].shots[0].kind, 'page');
   assert.equal(dto.options[0].shots[0].title, 'Overview');
+  const sound = phoneReview({ ...review, options: [{ ...review.options[0], shots: [{ image: review.options[0].image, media: { path: '/private/bed.m4a', mediaType: 'audio/mp4' } }] }] });
+  assert.equal(sound.options[0].shots[0].kind, 'audio');
   assert.ok(!JSON.stringify(dto).includes('/private'));
   assert.deepEqual(dto.draft, { notes: {} });
 });

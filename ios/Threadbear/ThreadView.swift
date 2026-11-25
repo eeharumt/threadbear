@@ -669,6 +669,8 @@ struct ThreadView: View {
     /// A finished turn that needs nothing from Mike: the done card's place.
     private func isDone(_ thread: PhoneThread, messages: [PhoneMessage]) -> Bool {
         thread.status == .idle && !thread.needsYou && thread.archivedAt == nil && thread.working == nil
+            // Waiting on its own work isn't done, as on the Mac.
+            && thread.wait?.section != .running
             && Turns.lastShown(messages)?.role == .assistant && nothingOnItsWay
             && (answeredDone == nil || answeredDone != messages.last?.seq)
     }
@@ -1256,12 +1258,8 @@ struct MarkdownText: View {
                 line(text)
             }
             .padding(.leading, CGFloat(depth) * 18)
-        case let .code(text):
-            ScrollView(.horizontal, showsIndicators: false) {
-                Text(text).font(.system(.footnote, design: .monospaced)).padding(10)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 8))
+        case let .code(text, language):
+            CodeBlockView(code: text, language: language)
         case let .rich(kind, source):
             RichBlockView(kind: kind, source: source)
         case let .draft(draft):

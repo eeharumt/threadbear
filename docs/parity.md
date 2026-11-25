@@ -28,7 +28,6 @@ and "iPhone" read every thread through Convex, with the same functions (convex/p
 | Design reviews | `reviews.list` | No: Reviews open in the Mac app from that Mac. | Yes | Yes | No: Design reviews (backend API 86) are not on Android yet. |
 | Reading a design review | `reviews.get` | No: Reviews open in the Mac app from that Mac. | Yes | Yes | No: Design reviews (backend API 86) are not on Android yet. |
 | Answering a design review | `reviews.respond` | No: Reviews open in the Mac app from that Mac. | Yes | Yes | No: Design reviews (backend API 86) are not on Android yet. |
-| Ask the others (For everyone, experiment feed) | `threads.askOthers` | No: A panel's threads start on that Mac's runner; the Feed offers it for this Mac's threads only. | No: The phone has no Feed. | No: The phone has no Feed. | No: The phone has no Feed. |
 | What fills its context | `threads.contextUsage` | No: Asked of the CLI on that Mac; the ring's popover there shows the totals only. | No: Not on the phone. | No: Not on the phone. | No: Not on the phone. |
 | Ticking an ask on the card | `threads.tickAsk` | No: Ticks stay on that Mac. | No: The phone sends picks with its answer instead. | No: The phone sends picks with its answer instead. | No: The phone sends picks with its answer instead. |
 | Editing a message | `threads.edit` | No: It undoes file changes on that Mac, so it waits for a way to show what it undid. | No: Not on the phone. | No: Not on the phone. | No: Not on the phone. |

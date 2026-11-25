@@ -2,6 +2,8 @@
 // file in step with it. Both sides ignore unknown fields, so extra internal
 // fields never leak out: summaries are built explicitly by toSummary().
 
+import type { WaitState } from './wait-state.ts';
+
 export const PROTOCOL_VERSION = 1;
 
 // cursor, opencode and grok run over ACP (adapters/acp/); each turns up as a
@@ -263,6 +265,9 @@ export type ThreadSummary = {
   needs?: NeedsWho;
   asks?: OpenAsk[];
   asksSeq?: number;
+  // The agent said those asks wait until its own shell jobs end (end_turn's
+  // askWhen "jobsEnd"): while one runs the thread isn't waiting on Mike.
+  asksAfterJobs?: true;
   pendingReviews?: number;
   createdAt: string;
   updatedAt: string;
@@ -278,6 +283,10 @@ export type ThreadSummary = {
   awaitingApp?: { commit?: string; short?: string }; // waiting to hear the app restarted onto this commit (wait_for_app_restart), for the Updates panel
   woke?: { at: string; since?: string }; // woke from hibernating by itself, not looked at yet
   onOldRunner?: boolean; // finishing a turn on a runner that handed over (Handovers)
+  // What it's waiting on, worked out by the runner for every app to draw
+  // (docs/protocol/needs-you.md, "Wait state"; runner/src/wait-state.ts).
+  // Absent from runners before 23 Nov: apps fall back to their own rule.
+  waitState?: WaitState;
   archivedAt?: string;
   // Who archived it and, from the done card's Archive menu, the user's word
   // on how it went; only while archivedAt is set (Who archived a thread).
@@ -327,14 +336,6 @@ export type ThreadSummary = {
   // Mike's last message to it, one line, for the sidebar's "You: ..."
   // (docs/protocol/threads.md, "What Mike last asked"). Absent until he's sent one.
   asked?: string;
-  // His first message to it, one line of up to 200 chars, for the Feed's
-  // card (docs/protocol/threads.md, "What Mike first asked"). It stays once set.
-  request?: string;
-  // A panel's lead: the other labs asked the same question, and those left
-  // out (docs/protocol/threads.md, "For everyone").
-  everyone?: EveryonePanel;
-  // A panel member: its lead's id.
-  everyoneOf?: string;
   // The librarian's search words for it, space-separated (docs/protocol/threads.md,
   // "Search"): searches match them as well as the title and preview.
   keywords?: string;
@@ -395,13 +396,6 @@ export type ThreadWorktree = { branch: string; mainCheckout: string; path: strin
 
 // The schedule's title as it was when it started the thread.
 export type ThreadSchedule = { id: string; title: string };
-// The labs a question went to with For everyone (docs/protocol/threads.md).
-export type EveryoneMissing = 'notSignedIn' | 'noRoom' | 'failed';
-export type EveryonePanel = {
-  members: { provider: Provider; name: string; threadId: string }[];
-  missing?: { provider: Provider; name: string; why: EveryoneMissing }[];
-};
-
 export type ThreadStartedByKind = 'tool' | 'thread' | 'schedule' | 'librarian' | 'runner';
 export type ThreadStartedBy = {
   kind: ThreadStartedByKind;
@@ -708,8 +702,10 @@ export type BackgroundTask = {
 // card it left open isn't his to answer yet (docs/protocol/needs-you.md, "Needs you";
 // Mike, 2 Nov). Shells and monitors don't count: one is often a watcher
 // waiting for Mike to do what he was asked, as with the SD card on 1 Nov.
-export function agentsStillWorking(tasks: BackgroundTask[] | undefined): boolean {
-  return Boolean(tasks?.some((t) => t.kind === 'agent' || t.kind === 'other'));
+// A shell counts only when the agent said its asks wait for its jobs
+// (`afterJobs`: end_turn's askWhen "jobsEnd", the summary's asksAfterJobs).
+export function agentsStillWorking(tasks: BackgroundTask[] | undefined, afterJobs = false): boolean {
+  return Boolean(tasks?.some((t) => t.kind === 'agent' || t.kind === 'other' || (afterJobs && t.kind === 'shell')));
 }
 
 // "2 sub-agents, 1 shell job in the background" for tb list's flags; '' with none.
@@ -832,8 +828,9 @@ export type ReviewUserMarkKind = 'circle' | 'highlight' | 'pin';
 export type ReviewUserMark = { n: number; kind: ReviewUserMarkKind; optionId: string; shot: number; box: MarkBox; path?: [number, number][]; image?: ImageRef };
 
 // One picture of an option: its first, or another screen or state of it.
-// media: a video (video/mp4, video/quicktime) or page (text/html) the
-// window plays or shows in place of image, which is then its still.
+// media: a video (video/mp4, video/quicktime), sound (audio/mpeg, audio/mp4,
+// audio/aac, audio/wav) or page (text/html) the window plays or shows in
+// place of image, which is then its still (a sound's waveform).
 // marks: the agent's marks on it (the reviewCanvas experiment).
 export type ReviewShot = { title?: string; image: ImageRef; media?: ImageRef; marks?: AgentMark[] };
 
@@ -894,7 +891,7 @@ export type EventBody =
   | { type: 'button.updated'; button: ReplyButton }
   // origin is set only on messages the runner sent by itself (the resume
   // after a restart).
-  | { type: 'user.message'; text: string; images: ImageRef[]; origin?: MessageOrigin; wakeReason?: string; scheduleId?: string; reviewId?: string; reviewResponse?: ReviewDraft; answers?: AskAnswer[]; editOf?: number; sentAs?: string; everyone?: true }
+  | { type: 'user.message'; text: string; images: ImageRef[]; origin?: MessageOrigin; wakeReason?: string; scheduleId?: string; reviewId?: string; reviewResponse?: ReviewDraft; answers?: AskAnswer[]; editOf?: number; sentAs?: string }
   // summary: the turn's summary, written by the runner from end_turn
   // givesWay: the turn's summary, with bullet replies off: any message of
   // the turn is the reply over it, however short
