@@ -9,9 +9,12 @@ import com.mikerosoft.threadbear.kit.PendingCommand
 import com.mikerosoft.threadbear.kit.PendingCommands
 import com.mikerosoft.threadbear.kit.PhoneBackend
 import com.mikerosoft.threadbear.kit.PhoneThread
+import com.mikerosoft.threadbear.kit.QuickPhrase
+import com.mikerosoft.threadbear.kit.QuickPhrases
 import com.mikerosoft.threadbear.kit.ReplyButtons
 import com.mikerosoft.threadbear.kit.SlashCommand
 import com.mikerosoft.threadbear.kit.SlashPalette
+import java.util.Locale
 import java.util.WeakHashMap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -87,6 +90,16 @@ class ThreadExtras(private val model: AppModel, context: Context) {
     val recentSlash = MutableStateFlow(prefs.getString("recentSlashCommands", null)?.split('\n')?.filter { it.isNotEmpty() } ?: emptyList())
 
     val canUseSlashCommands get() = model.apiVersion >= BackendApi.SLASH_COMMANDS
+
+    // Quick phrases
+
+    /** The buttons over the reply box, kept on this phone whatever it's paired with. */
+    val quickPhrases = MutableStateFlow(QuickPhrases.load(prefs.getString("quickPhrases", null), Locale.getDefault().language))
+
+    fun setQuickPhrases(phrases: List<QuickPhrase>) {
+        quickPhrases.value = phrases
+        prefs.edit().putString("quickPhrases", QuickPhrases.save(phrases)).apply()
+    }
 
     fun used(command: SlashCommand) {
         recentSlash.value = SlashPalette.used(command.name, recentSlash.value)

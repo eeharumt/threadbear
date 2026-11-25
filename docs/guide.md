@@ -2143,6 +2143,11 @@ downloads the new APK to install over the top, still paired. Notifications
 come through Google's Firebase, so a phone without Google Play services
 gets everything but those.
 
+Over the reply box are quick phrases: tap one to send its message. With
+something already typed, it's added to the box instead, for you to send.
+Press and hold one to change or delete it, and tap + to add your own. They're
+kept on that phone.
+
 ## Self-hosting your backend
 <!-- slug: self-hosting -->
 

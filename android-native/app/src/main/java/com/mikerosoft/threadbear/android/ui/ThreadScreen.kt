@@ -81,6 +81,7 @@ import com.mikerosoft.threadbear.kit.PhoneMessage
 import com.mikerosoft.threadbear.kit.PhoneThread
 import com.mikerosoft.threadbear.kit.Plans
 import com.mikerosoft.threadbear.kit.Role
+import com.mikerosoft.threadbear.kit.QuickPhrase
 import com.mikerosoft.threadbear.kit.SlashPalette
 import com.mikerosoft.threadbear.kit.ThreadChange
 import com.mikerosoft.threadbear.kit.ThreadItem
@@ -117,7 +118,12 @@ fun ThreadScreen(threadId: String, back: () -> Unit, open: (String) -> Unit) {
         topBar = { ThreadBar(thread, back) },
         bottomBar = {
             if (thread != null) Column {
-                OverTheBox(thread, box.text.text.toString(), gate) { box.text.setTextAndPlaceCursorAtEnd(it) }
+                val fill: (String) -> Unit = { box.text.setTextAndPlaceCursorAtEnd(it) }
+                val quick: (QuickPhrase) -> Unit = { phrase ->
+                    if (box.isEmpty) vm.send(phrase.text) { if (box.isEmpty) fill(phrase.text) }
+                    else box.append(phrase)
+                }
+                OverTheBox(thread, box.text.text.toString(), gate, quick, fill)
                 val offline = model.offlineRunner(thread)
                 Composer(
                     box = box,
@@ -160,11 +166,11 @@ fun ThreadScreen(threadId: String, back: () -> Unit, open: (String) -> Unit) {
 
 /**
  * Over the reply box: the slash palette while what's typed is a command
- * being typed, and the thread's
- * patch link buttons, as the iPhone stacks them over its composer.
+ * being typed, the thread's patch link buttons, as the iPhone stacks them
+ * over its composer, and this phone's quick phrases (Android only).
  */
 @Composable
-private fun OverTheBox(thread: PhoneThread, draft: String, gate: LinkGate, fill: (String) -> Unit) {
+private fun OverTheBox(thread: PhoneThread, draft: String, gate: LinkGate, quick: (QuickPhrase) -> Unit, fill: (String) -> Unit) {
     val model = LocalModel.current
     val extras = ThreadExtras.of(model, LocalContext.current)
     Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -175,6 +181,7 @@ private fun OverTheBox(thread: PhoneThread, draft: String, gate: LinkGate, fill:
             }
         }
         LinkChips(thread.links.orEmpty()) { gate.decide(it) }
+        if (query == null) QuickPhraseRow(extras, quick)
     }
 }
 

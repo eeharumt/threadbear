@@ -12,6 +12,7 @@ import androidx.compose.foundation.text.input.OutputTransformation
 import androidx.compose.foundation.text.input.TextFieldBuffer
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.clearText
+import androidx.compose.foundation.text.input.placeCursorAtEnd
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -27,6 +28,8 @@ import com.mikerosoft.threadbear.kit.BackendApi
 import com.mikerosoft.threadbear.kit.InlinePictures
 import com.mikerosoft.threadbear.kit.PhotoPrep
 import com.mikerosoft.threadbear.kit.PhotoUpload
+import com.mikerosoft.threadbear.kit.QuickPhrase
+import com.mikerosoft.threadbear.kit.QuickPhrases
 import com.mikerosoft.threadbear.kit.TransportError
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -350,6 +353,12 @@ class PhotoBox(val text: TextFieldState) {
             replace(0, length, result.text)
             this.selection = TextRange(result.cursor)
         }
+    }
+
+    /** A quick phrase after what's typed; the photos' chips before it stay put. */
+    fun append(phrase: QuickPhrase) = text.edit {
+        replace(0, length, QuickPhrases.added(asCharSequence().toString(), phrase))
+        placeCursorAtEnd()
     }
 
     /** The strip's remove button: the photo and its chip. */

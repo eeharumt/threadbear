@@ -217,7 +217,11 @@ for them to be built from source in the recipe.
    sheet like the website's Share panel: Share with a link (`phone:share`,
    backend API 8), the link with Copy and Send (Android's share sheet),
    and New link. The link is `<site>/s/<slug>`, the site from `phone:me`'s
-   `site`, else a cloud deployment's `.convex.site` twin.
+   `site`, else a cloud deployment's `.convex.site` twin. Over the reply
+   box is a row of quick phrases (`QuickPhrases.kt`, Android only), kept on
+   the phone: a tap sends one as a message, or adds it to what's typed
+   without sending; holding one changes or deletes it, and + adds one.
+   A folder's patch actions and panels still stay on the Mac.
 4. New thread (the bar's pencil): text with photos and dictation, runner,
    agent, model and effort (the agent and its own models as the website
    offers them, `web/src/new-thread-choices.ts`; the iPhone has no agent
