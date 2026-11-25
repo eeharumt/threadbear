@@ -73,6 +73,7 @@ android {
         applicationId = "com.mikerosoft.threadbear.android"
         forkName?.let { applicationIdSuffix = ".$it" }
         manifestPlaceholders["appLabel"] = forkName?.let { "Threadbear $it" } ?: "Threadbear"
+        manifestPlaceholders["appIcon"] = if (forkName != null) "@mipmap/ic_launcher_fork" else "@mipmap/ic_launcher"
         minSdk = 29
         targetSdk = 36
         // 20261112 for release/2026-11-12; 1 for a local build.

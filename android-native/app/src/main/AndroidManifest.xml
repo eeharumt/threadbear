@@ -21,7 +21,7 @@
         android:name=".ThreadbearApplication"
         android:allowBackup="false"
         android:enableOnBackInvokedCallback="true"
-        android:icon="@mipmap/ic_launcher"
+        android:icon="${appIcon}"
         android:label="${appLabel}"
         android:supportsRtl="true"
         android:theme="@style/Theme.Threadbear">

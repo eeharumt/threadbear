@@ -98,8 +98,8 @@ few pieces that would bring Google's closed code in, which live in
 | Updates | asks GitHub (`Updates.kt`, `SELF_UPDATE` true) | none: F-Droid updates it (`SELF_UPDATE` false) |
 
 A fork's own copy beside the store's: `-PthreadbearFork=<name>` adds
-`.<name>` to the application id and the name to the label. It pairs by
-itself, and the store's app stays as it was.
+`.<name>` to the application id and the name to the label, and uses a teal
+launcher icon. It pairs independently.
 
 Both flavours share `Push` (the push key, showing a notification, the
 pairing lock), and each gives a `StorePush` (`PushTransport`): where the
