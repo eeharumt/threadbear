@@ -47,7 +47,8 @@ const CHECK_FILES = ['check.sh', 'scripts/check-cache.mjs', 'scripts/limit-step.
 const REPO_SETTINGS = ['.gitattributes', '.gitignore', 'runner/.gitignore', '.git-blame-ignore-revs', '.npmrc', 'runner/.npmrc', '.nvmrc', 'runner/.nvmrc'];
 // And every test file's: how the tests are run, and the packages they get.
 const TEST_FILES = ['runner/package.json', 'runner/package-lock.json', 'runner/tsconfig.json',
-  'runner/test/helpers/clean-env.ts', 'runner/test/helpers/failed-files-reporter.mjs', 'runner/test/helpers/passed-files-reporter.mjs'];
+  'runner/test/helpers/clean-env.ts', 'runner/test/helpers/failed-files-reporter.mjs', 'runner/test/helpers/passed-files-reporter.mjs',
+  'runner/test/helpers/run-test-files.mjs'];
 
 const sha = (s) => crypto.createHash('sha256').update(s).digest('hex');
 const blob = (buf) => crypto.createHash('sha1').update(`blob ${buf.length}\0`).update(buf).digest('hex');
@@ -177,6 +178,15 @@ const PLATFORM = `platform ${process.platform} ${process.arch}`;
 // tree). Cargo is asked in desktop/, so rust-toolchain.toml's pin is the one
 // it names, and never through the shared-cargo wrapper, which would take a
 // build slot's lock and copy the checkout over to answer.
+//
+// Asking installs nothing (RUSTUP_AUTO_INSTALL=0): rustup's cargo and rustc
+// download the toolchain they'd run when it isn't there, and Homebrew's
+// rustup does that for stable with no toolchain set at all. On GitHub's
+// Macs a test's rustc, asked its version with a made-up HOME, put 1.4 GB
+// there in 17 s (22 Nov 2026; check-cache.test.ts, checkout). A toolchain
+// that's missing reads as no version, and that answer isn't kept: the step
+// that needs it installs it, the key made after it has the version, and so
+// a pass is never recorded under "no version".
 function toolVersion(treeFile, args, root) {
   const tool = args.some((a) => /(^|\/)cargo$/.test(a)) ? 'cargo'
     : args.some((a) => /(^|\/)swift$/.test(a)) ? 'swift' : args.includes('npm') ? 'npm' : '';
@@ -188,14 +198,17 @@ function toolVersion(treeFile, args, root) {
   const cmd = tool === 'cargo' ? [cargo, ['--version', '--verbose']]
     : tool === 'swift' ? ['swift', ['--version']] : ['npm', ['--version']];
   const cwd = tool === 'cargo' && root && fs.existsSync(path.join(root, 'desktop')) ? path.join(root, 'desktop') : path.dirname(treeFile);
-  const r = spawnSync(cmd[0], cmd[1], { encoding: 'utf8', cwd });
+  const env = { ...process.env, RUSTUP_AUTO_INSTALL: '0' };
+  const r = spawnSync(cmd[0], cmd[1], { encoding: 'utf8', cwd, env });
   let v = `${tool}: ${(r.stdout ?? '').trim()} ${r.status}`;
+  let said = r.status === 0;
   if (tool === 'cargo') {
     const beside = path.join(path.dirname(cargo), 'rustc');
-    const rustc = spawnSync(cargo.includes('/') && fs.existsSync(beside) ? beside : 'rustc', ['--version', '--verbose'], { encoding: 'utf8', cwd });
+    const rustc = spawnSync(cargo.includes('/') && fs.existsSync(beside) ? beside : 'rustc', ['--version', '--verbose'], { encoding: 'utf8', cwd, env });
     v += ` rustc: ${(rustc.stdout ?? '').trim()}`;
+    said &&= rustc.status === 0;
   }
-  try { fs.writeFileSync(memo, v); } catch {}
+  if (said) try { fs.writeFileSync(memo, v); } catch {}
   return v;
 }
 

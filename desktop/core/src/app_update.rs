@@ -238,10 +238,11 @@ impl BuildDebounce {
 
 /// How long main has to stay as it is before the app builds it: runner.json's
 /// `updateQuietMinutes`, two by default. A few landings in a row then make
-/// one build, not one each. Mike's says ten, as his threads land all day and
-/// each build takes a build host for minutes; on a copy where one person
-/// lands now and then, ten minutes was most of the wait to see a fix (Ville,
-/// 21 Nov).
+/// one build, not one each. Mike's says three, as his threads land all day and
+/// each build takes a build host for minutes (it said ten until 24 Nov, which
+/// with the build put off behind agents' work left his app half an hour to two
+/// hours behind main); on a copy where one person lands now and then, ten
+/// minutes was most of the wait to see a fix (Ville, 21 Nov).
 pub const DEFAULT_QUIET_MINUTES: u32 = 2;
 
 pub fn quiet_minutes(runner_json: &Path) -> u32 {

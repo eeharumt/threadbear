@@ -2980,7 +2980,7 @@ impl SidePane {
     pub(crate) fn dock_showing(&self, panel: &str, cx: &App) -> bool {
         self.app
             .upgrade()
-            .is_some_and(|app| app.read(cx).dock.read(cx).controller.is_showing(panel))
+            .is_some_and(|app| app.read(cx).dock.read(cx).is_showing(panel))
     }
 
     /// The section that draws what's over the whole pane (a menu, the ⓘ
@@ -3115,13 +3115,7 @@ impl SidePane {
         } else {
             None
         };
-        // Over the Feed, the Feed draws it (inbox_feed.rs), as no thread's
-        // side pane may be showing.
-        let feed = self
-            .app
-            .upgrade()
-            .is_some_and(|app| app.read(cx).feed_showing());
-        let viewer = if hosts && !feed {
+        let viewer = if hosts {
             self.viewer_overlay(window, cx)
         } else {
             None

@@ -6,12 +6,13 @@ import './win32-hide.ts';
 import { onYearToken } from './year-token.ts';
 import { YearTokenMaker } from './year-token-maker.ts';
 import { realCopy } from './real-copy.ts';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { readShareImage } from './share-images.ts';
 import { CallerGate } from './rpc-gate.ts';
-import { threadOfSocket } from './peer.ts';
+import { MARK_NAMES, ownThreadMarks, threadOfSocket } from './peer.ts';
 import { threadKey as makeThreadKey } from './rpc-auth.ts';
 import { makePrivate } from './win-acl.ts';
 import { loadConfig, ensureHome, readToken, paths, recordListening, defaultHome, DEFAULT_CWD, RUNNER_VERSION, RunnerJsonError, peekRunnerJson, expandHome } from './config.ts';
@@ -29,7 +30,7 @@ import { SwiftChanges } from './swift-changes.ts';
 import { commitBefore, commitOnMain, RemoteUpdateFixer, reportedOnDisk, UpdateFixer, type UpdateFailure } from './fix-update.ts';
 import { followOriginOn } from './follow-origin.ts';
 import { bringInSetting, spareWeekOn } from './settings.ts';
-import { SpareWeek, looksByItself } from './spare-week.ts';
+import { SpareWeek, looksByItself, spareWeekBinding } from './spare-week.ts';
 import { MAIL_WATCH, MailWatch } from './mail-watch.ts';
 import { Restarter, restartMethods } from './restart.ts';
 import { AppRestarts } from './app-restarts.ts';
@@ -105,7 +106,7 @@ import { filesMethods } from './files.ts';
 import { devicesMethods } from './devices.ts';
 import { flushSentry, reportException, reportLoggedError, reportLoggedWarning, startSentry, useSentryMask } from './sentry.ts';
 import { ERROR_EXIT_CODE, ERROR_LEAVE_DEADLINE_MS, ERROR_STOP_DEADLINE_MS, decideErrorExit, errorMode, guardHolds, guardNotice, readErrorExits, takeErrorEnv, testThrow, writeErrorExits } from './error-exits.ts';
-import { ALWAYS_ASK_TOOLS, NEVER_ASK_TOOLS, RICH_BLOCKS_LINE, SERVER_NAME, buildThreadbearTools, threadbearMcpServer, type RemoteControl } from './threadbear-mcp.ts';
+import { ALWAYS_ASK_TOOLS, NEVER_ASK_TOOLS, LIVE_PAGES_LINE, RICH_BLOCKS_LINE, SERVER_NAME, buildThreadbearTools, threadbearMcpServer, type RemoteControl } from './threadbear-mcp.ts';
 import { CrossRunner } from './cross-runner.ts';
 import { FAILED_SHOWN_MS, MovePreviews, Moves, moveInfoFrom, previewInfo, stillRunner, type ThreadMoving } from './moves.ts';
 import type { RemoteThreads } from './thread-index.ts';
@@ -281,6 +282,15 @@ async function main(): Promise<void> {
   removeTempFiles(cfg.home, paths.run(cfg.home), paths.threads(cfg.home));
 
   const registry = new ProcessRegistry(paths.run(cfg.home), log);
+  // The thread keys and ids this runner was started under (a dev runner's,
+  // from a thread's shell): a connection under any other thread's that isn't
+  // one of this runner's own threads is turned away (Daybreak finding 177).
+  // Read now, while its parents are still there.
+  const own = await ownThreadMarks({ log });
+  // Read: what it starts without a thread's own environment mustn't carry
+  // the starting thread's (a dev runner's tb would otherwise use that
+  // thread's key here, and be refused).
+  for (const n of MARK_NAMES) delete process.env[n];
   // Waits until the old CLIs are gone, so a resume never runs beside them.
   // A copy's run/ lists the live runner's CLIs: forgotten, never stopped.
   if (copyOfReal) registry.removeFile();
@@ -444,7 +454,7 @@ async function main(): Promise<void> {
     registry,
     log,
     mcpServersFor: (threadId) => ({
-      [SERVER_NAME]: threadbearMcpServer(router(), threadId, scheduleControl(), projectControl(), appRestarts, () => cfg.bulletReplies, pocketControl, () => cfg.oneReply, () => cfg.connectorsUrl, gatewayHealth, remoteControl, () => experimentOn(cfg.home, 'loadEndTurn'), () => experimentOn(cfg.home, 'reviewCanvas')),
+      [SERVER_NAME]: threadbearMcpServer(router(), threadId, scheduleControl(), projectControl(), appRestarts, () => cfg.bulletReplies, pocketControl, () => cfg.oneReply, () => cfg.connectorsUrl, gatewayHealth, remoteControl, () => experimentOn(cfg.home, 'loadEndTurn'), () => experimentOn(cfg.home, 'reviewCanvas'), () => experimentOn(cfg.home, 'livePages')),
       ...Object.fromEntries(Object.entries(archiveServers()).map(([name, server]) => [name, { type: 'stdio' as const, ...server }])),
     }),
     oneReply: () => cfg.oneReply,
@@ -452,6 +462,9 @@ async function main(): Promise<void> {
     neverAsk: NEVER_ASK_TOOLS,
   });
   // The threadbear tools for an agent that isn't given them in-process.
+  // What Codex and ACP agents get beside the tools: the rich blocks, and
+  // live pages with that experiment on.
+  const richGuidance = () => (experimentOn(cfg.home, 'livePages') ? `${RICH_BLOCKS_LINE} ${LIVE_PAGES_LINE}` : RICH_BLOCKS_LINE);
   const codexStyleTools = (threadId: string) => buildThreadbearTools(router(), threadId, Date.now, scheduleControl(), projectControl(), appRestarts, { provider: 'codex', bulletReplies: () => cfg.bulletReplies, oneReply: () => cfg.oneReply, pocket: pocketControl, gateway: () => cfg.connectorsUrl, gatewayHealth, remote: remoteControl, reviewCanvas: () => experimentOn(cfg.home, 'reviewCanvas') });
   // One app-server per live Codex thread, each starting what E says is
   // current, with the same threadbear tools as dynamic tools.
@@ -462,8 +475,11 @@ async function main(): Promise<void> {
     log,
     toolsFor: codexStyleTools,
     mcpServers: archiveServers,
+    // An extra Codex login gets ~/.codex's instructions, hooks, skills and
+    // config.toml, linked, and the trust its hooks have there.
+    codexMainDir: cfg.codexMainDir,
     onNotice: (text) => runner.notice('warning', text),
-    extraGuidance: () => RICH_BLOCKS_LINE,
+    extraGuidance: () => richGuidance(),
   });
   // One process per live thread on an agent that speaks ACP, off unless the
   // experiment is on (they find no account, and refuse to start without it).
@@ -476,7 +492,7 @@ async function main(): Promise<void> {
         registry,
         log,
         toolsFor: codexStyleTools,
-        extraGuidance: () => RICH_BLOCKS_LINE,
+        extraGuidance: () => richGuidance(),
         dataDir: cfg.home,
         opencodeUserConfig: p === 'opencode' && cfg.opencodeUserConfig,
       }),
@@ -498,6 +514,8 @@ async function main(): Promise<void> {
   // message gets (Runner.forAgent). Only phone messages read it, and they
   // only come through that mirror.
   let atMac: boolean | undefined;
+  // Set once Recipes is made, further down.
+  let recipesHabits: (() => string) | undefined;
   const instructions = new InstructionsStore({ home: cfg.home, token, publish: (n) => runner.publish(n) });
   // Not in box mode: its spawn gate (spawn-gate.ts) holds processes on the
   // main thread only, and the look runs git.
@@ -514,7 +532,9 @@ async function main(): Promise<void> {
         }
       : {}),
     threadKey: (id) => makeThreadKey(token, id),
-    standingInstructions: () => instructions.given(),
+    // His own, then the habits of the recipes that are on (recipes.ts): both
+    // are for every thread, and a change to either is news the same way.
+    standingInstructions: () => [instructions.given().trim(), recipesHabits?.() ?? ''].filter(Boolean).join('\n\n'),
     projects,
     atMac: () => atMac,
     config: cfg,
@@ -643,6 +663,8 @@ async function main(): Promise<void> {
   if (!copyOfReal && !box) scheduler.start();
   // The done card's loose ends list the check-ins booked for a thread.
   runner.schedulesFor = (id) => scheduler.list(id);
+  // The list as it starts, so the first change to it re-sends the threads it moves.
+  runner.recheckWaitStates();
   runner.scheduleChecks = () => scheduler.localChecks();
   // Projects need the threads loaded (their counts, and the thread side of
   // membership); the librarian needs both.
@@ -1146,9 +1168,8 @@ async function main(): Promise<void> {
     accounts: () => runner.safeAccounts(),
     pools: () => runner.pools(),
     history: (since) => usageHistory.rows(since),
-    start: (r) => runner.create({ text: r.text, title: r.title, cwd: r.cwd, accountId: r.accountId, startedBy: { kind: 'runner', label: 'Threadbear', why: r.why } }).thread.id,
     open: openThread,
-    send: (threadId, text) => void runner.send(threadId, text, [], { queue: true }),
+    ...spareWeekBinding(runner),
   });
   runner.spareWeek = spareWeek;
   if (!box) spareWeek.start();
@@ -1200,6 +1221,7 @@ async function main(): Promise<void> {
     folder: () => expandHome(peekRunnerJson(cfg.home).recipes?.folder || DEFAULT_RECIPES_FOLDER),
     now: () => realClock.now(),
     on: () => experimentOn(cfg.home, RECIPES_EXPERIMENT),
+    sign: (text) => crypto.createHmac('sha256', token).update(text).digest('hex'),
     publish: () => runner.publish({ method: 'recipes.updated', params: {} }),
     experimentOn: (id) => experimentOn(cfg.home, id),
     setExperiment: (id, on) => settings.update({ experiments: { [id]: on } }),
@@ -1208,6 +1230,7 @@ async function main(): Promise<void> {
     start: (p) => runner.create({ text: p.text, title: p.title, cwd: p.cwd, worktree: false, startedBy: { kind: 'runner', label: 'Recipes', why: p.title } }).thread,
     log: (msg, extra) => log.warn(msg, extra),
   });
+  recipesHabits = () => recipes.habits();
   if (!box && !copyOfReal) recipes.start();
   const upstream = new Upstream({
     home: cfg.home,
@@ -1269,6 +1292,8 @@ async function main(): Promise<void> {
     if (u.followProblem) out.followProblem = u.followProblem;
     const webRuntimeProblem = webRuntimeUpdates.problem();
     if (webRuntimeProblem) out.webRuntimeProblem = webRuntimeProblem;
+    const webRuntimeNote = webRuntimeUpdates.note();
+    if (webRuntimeNote) out.webRuntimeNote = webRuntimeNote;
     const behind = sync.behindRunners();
     if (behind.length) out.behindRunners = behind;
     const up = upstream.status();
@@ -1713,7 +1738,7 @@ async function main(): Promise<void> {
     relay,
     virtualStart: (p) => virtualRunners.start(p),
     gate: new CallerGate({ runner, remote: peers, schedules: scheduler, images: runner.importQuota }),
-    callerOf: (sock) => threadOfSocket(sock, { registry, known: (id) => runner.has(id) || peers.owns(id), log }),
+    callerOf: (sock) => threadOfSocket(sock, { registry, known: (id) => runner.has(id) || peers.owns(id), log, own, keyOf: (id) => makeThreadKey(token, id) }),
     updates: () => (draining ? undefined : runnerUpdates()),
     appHello: (build, app) => appRestarts.appHello(build, app),
     appSeen: () => appSeen.mark(),
@@ -1985,7 +2010,7 @@ async function main(): Promise<void> {
         // Its port is on disk too (drain-<pid>.json), so a thread's shell can
         // reach this one as well as the primary.
         gate: new CallerGate({ runner, schedules: scheduler, images: runner.importQuota }),
-        callerOf: (sock) => threadOfSocket(sock, { registry, known: (id) => runner.has(id), log }),
+        callerOf: (sock) => threadOfSocket(sock, { registry, known: (id) => runner.has(id), log, own, keyOf: (id) => makeThreadKey(token, id) }),
         methods: {
           ...scheduledSendMethods(runner),
           'drain.hello': () => {

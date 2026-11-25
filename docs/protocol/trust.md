@@ -384,7 +384,16 @@ the shell's own and run nothing, `[[` only in a script bash, zsh or ksh runs
 but there a number compared with `-eq` and
 the like, or a name tested with `-v` or `-R`, must be plain and known now,
 as bash works them out as arithmetic, whose `a[$(cmd)]` runs a command
-from the data), `npm version` (its version scripts are followed) and
+from the data; and a program may come only from a folder programs are
+installed in, on PATH, by its path or in a hook's settings `env` (the
+system's, Homebrew's, `~/.local/bin`, `~/bin`, `~/.bun/bin`, `~/.cargo/bin`,
+`~/.nvm/versions/node/*/bin` and the like, and the runner's own PATH, never
+the repo or a temp folder; `trustedProgramDirs`), with nothing written in
+one or where its programs are installed (`/opt/homebrew`, `~/.local`),
+and no `BASH_CMDS`, zsh `commands`, `functions` or `hash name=file`, `set
+-A`, `typeset -T`, PATH set in an expansion or arithmetic, `unset PATH`, a
+`#!` from another folder, IFS set beyond empty, or an unquoted `$x` whose
+value splits into words), `npm version` (its version scripts are followed) and
 `npm explore`, any of npm's own commands that could run something of the
 folder's for a check or hook, `MAKEFILES`, `MAKEFLAGS`, `AWKPATH` or
 `AWKLIBPATH` set, `make --eval`, gawk's `--include`, `-i`, `--load` or

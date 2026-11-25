@@ -1541,7 +1541,7 @@ impl SidePane {
                         ) {
                             app.update(cx, |app, cx| {
                                 let id = t.id.clone();
-                                app.threads.insert(t.id.clone(), Arc::new(t));
+                                app.store_reply_summary(t);
                                 app.open(id, window, cx);
                             });
                         }

@@ -27,7 +27,7 @@ import { SAID_MAX } from './wake-when.ts';
 
 export { parseWhen, relativeFuture, relativeTime };
 import { RUNNER_VERSION, expandHome } from './config.ts';
-import { droppedOpenLines, OPEN_GONE, ALREADY_ENDED, ARCHIVE_ADDED, MAX_UNTIL, MAX_WAIT_FOR, SNOOZE_ADDED, snoozeFromTool, endTurnDescription, endTurnForm, endTurnMisfit, endTurnTaken, strayAskFields, strayAskProblem, openCardsNote, END_TURN_TOOL, BULLETS_ONLY, ENDED, takenEndTurn, MAX_BYLINE, NARRATION_ONLY, NO_REPLY, needsFromTool, oneReplyAccepted, handsOverAStep, oneReplyAlreadyWritten, summaryFromTool, triedFirstNudged, tryFirstNudge, projectStepNudge, projectStepNudged, unansweredItems, deadEndNudge, deadEndNudged, hasDeadEnd, plainCardNudge, plainCardNudged, wantsPlainCard, turnReply, unreadMessageRefusal, type TurnReply } from './needs.ts';
+import { askWhenFromTool, jobsNudge, jobsNudged, heldNudge, heldNudged, droppedOpenLines, OPEN_GONE, ALREADY_ENDED, ARCHIVE_ADDED, MAX_UNTIL, MAX_WAIT_FOR, SNOOZE_ADDED, snoozeFromTool, endTurnDescription, endTurnForm, endTurnMisfit, endTurnTaken, strayAskFields, strayAskProblem, openCardsNote, END_TURN_TOOL, BULLETS_ONLY, ENDED, takenEndTurn, MAX_BYLINE, NARRATION_ONLY, NO_REPLY, needsFromTool, oneReplyAccepted, handsOverAStep, oneReplyAlreadyWritten, summaryFromTool, triedFirstNudged, tryFirstNudge, projectStepNudge, projectStepNudged, unansweredItems, deadEndNudge, deadEndNudged, hasDeadEnd, plainCardNudge, plainCardNudged, wantsPlainCard, turnReply, unreadMessageRefusal, type TurnReply } from './needs.ts';
 
 // end_turn's needs, both forms: "done" meant this turn's step until 11 Nov
 // 2026, when thread 0222c475 said nothing with three draft PRs unmerged in
@@ -49,6 +49,8 @@ import { starterIn, type StartRequest } from './cross-runner.ts';
 import { SECRET_TIMEOUT_DEFAULT_MIN, SECRET_TIMEOUT_MAX_MIN } from './secrets.ts';
 import { cutSafely, firstLineSafely } from './safe-cut.ts';
 import { pickRunner } from './moves.ts';
+import { above, LEAST, raises, type Authority } from './access.ts';
+export { above, LEAST, raises, type Authority };
 import { FINDINGS_REFUSALS, FINDINGS_REFUSED, MAX_FINDINGS, findingsProblem, refusalsThisTurn } from './runner/lab-review.ts';
 
 // What the tools drive: the Runner itself, or during a handover
@@ -78,6 +80,11 @@ export type ThreadControl = {
   // Background jobs or sub-agents of this thread's still running, which
   // wake it when they end (Runner.ownWorkRunning).
   ownWorkRunning?: (threadId: string) => boolean;
+  // Its shell jobs still running, by description, when their end wakes it
+  // (Runner.shellJobs): end_turn asks whether its asks wait for them.
+  shellJobs?: (threadId: string) => string[];
+  // Asks its last turn held back for a job, still unseen (Runner.heldAsks).
+  heldAsks?: (threadId: string) => string[];
   // What end_turn owes a review by another lab (runner/lab-review.ts).
   reviewOwes?: (threadId: string) => ReturnType<Runner['reviewOwes']>;
   requestSecret?: (threadId: string, req: SecretRequest) => Promise<SecretAnswer>;
@@ -131,25 +138,11 @@ export const SERVER_NAME = 'threadbear';
 // brief's line diff), for the card reviewer (runner/card-review.ts) alone.
 export type AgentApprovalRequest = { name: string; title: string; input: Record<string, unknown>; review?: string; signal?: AbortSignal };
 
-// Permission modes by how much an agent may do in them without asking.
-// Plan first ranks with ask: its agent changes nothing, and only Mike's
-// approval takes it out of plan mode.
-const ACCESS: Record<PermissionMode, number> = { ask: 0, plan: 0, auto: 1, full: 2 };
 export const MODE_NAMES: Record<PermissionMode, string> = { full: 'Full access', auto: 'Auto', ask: 'Ask before edits', plan: 'Plan first' };
-export const raises = (to: PermissionMode, from: PermissionMode): boolean => ACCESS[to] > ACCESS[from];
 const higherOf = (a: PermissionMode, b: PermissionMode): PermissionMode => (raises(a, b) ? a : b);
 const lowerOf = (a: PermissionMode, b: PermissionMode): PermissionMode => (raises(a, b) ? b : a);
 // A mode as a ceiling: Plan first ranks with Ask (runner/ceiling.ts).
 const asCeiling = (m: PermissionMode): PermissionMode => (m === 'plan' ? 'ask' : m);
-// What a thread's agent can do: its mode.
-export type Authority = { mode: PermissionMode };
-// The least there is, below even Ask and Plan, by this very object: a
-// thread that isn't here (on another runner of this Mac's), or one an older
-// release ran shut in the sandbox (ThreadRecord.confined), whose words are
-// never passed up on a guess (hibernation.ts).
-export const LEAST: Authority = Object.freeze({ mode: 'ask' as const });
-// More than the caller has: a higher mode, or anything at all over LEAST.
-export const above = (t: Authority, caller: Authority): boolean => (caller === LEAST && t !== LEAST) || raises(t.mode, caller.mode);
 // A new_thread schedule's mode for the access checks: its own, or what it
 // inherits (Schedule.defaultMode). One whose inherited mode isn't known here
 // (another runner's default) counts as the least for raising it and the most
@@ -386,6 +379,33 @@ export function buildThreadbearTools(
     if (!schedules) return false;
     const list = await inTime((async () => schedules.list(selfId))(), ID_LIST_TIMEOUT_MS, "couldn't read the schedules").catch(() => [] as Schedule[]);
     return list.some((sc) => sc.threadId === selfId && !sc.paused && !sc.finishedAt && Boolean(sc.nextRunAt));
+  };
+  // Asks made while a shell job of the thread's own runs: the agent says
+  // whether they wait for it (needs.ts, JOBS_NUDGE). And a turn ending with
+  // nothing for the user after one that held asks back is asked about them
+  // (HELD_NUDGE). Each once a turn: by the events, and by the turn each
+  // last went to, as a sub-agent's call never reaches the thread's events
+  // and would be refused every time (projectNotedTurn, above). A call that
+  // still doesn't say asks at once, as before.
+  let jobsNotedTurn: number | undefined;
+  let heldNotedTurn: number | undefined;
+  const checkJobs = async (input: unknown, needs: string, events: PersistedEvent[]): Promise<void> => {
+    const held = needs === 'you' ? [] : (control.heldAsks?.(selfId) ?? []);
+    const jobs = needs === 'you' && !askWhenFromTool(input) ? (control.shellJobs?.(selfId) ?? []) : [];
+    if (!held.length && !jobs.length) return;
+    // Claude: a call that isn't in the thread's events is a sub-agent's,
+    // which is neither held up nor counted as the thread's once (Codex's
+    // second review). Codex: capped by the turn, as above.
+    if (!codex && !(await replied()).landed) return;
+    const turn = events.findLast((e) => e.type === 'turn.started')?.seq;
+    if (held.length) {
+      if (heldNudged(events) || (codex && turn !== undefined && turn === heldNotedTurn)) return;
+      heldNotedTurn = turn;
+      throw new Error(heldNudge(held));
+    }
+    if (jobsNudged(events) || (codex && turn !== undefined && turn === jobsNotedTurn)) return;
+    jobsNotedTurn = turn;
+    throw new Error(jobsNudge(jobs));
   };
   const projectStepNote = async (input: { archive?: unknown; snooze?: unknown; waitFor?: unknown }, needs: string, next: string[] | undefined, events: PersistedEvent[]): Promise<string | undefined> => {
     if (opts.projectStepNote === false || needs !== 'nothing' || !projects) return undefined;
@@ -784,7 +804,7 @@ export function buildThreadbearTools(
   const reviewTools = [
     tool(
       'show_options',
-      'Shows the user design options (mockups, wireframes, screenshots, videos or HTML pages of variants) in a review window to choose between, instead of pinning them, listing them or reading every image into the transcript. Only for options whose look or motion is the point: options that are words (names, plans, approaches, a shortlist) go in your reply, not on pages made for this. Give an option\u2019s other screens or states as its shots, never as options of their own. The window steps through every shot in order, then shows the options side by side; the user can pick any number or none, and reply. Returns a review ID promptly; finish your turn and the answer arrives later as a message. A reference option (today\u2019s version, say) can\u2019t be picked.',
+      'Shows the user design options (mockups, wireframes, screenshots, videos or HTML pages of variants) in a review window to choose between, instead of pinning them, listing them or reading every image into the transcript. Only for options whose look, sound or motion is the point: options that are words (names, plans, approaches, a shortlist) go in your reply, not on pages made for this. Give an option\u2019s other screens or states as its shots, never as options of their own. The window steps through every shot in order, then shows the options side by side; the user can pick any number or none, and reply. Returns a review ID promptly; finish your turn and the answer arrives later as a message. A reference option (today\u2019s version, say) can\u2019t be picked.',
       {
         title: z.string().min(1).max(200).describe('What the user is reviewing.'),
         note: z.string().max(4000).optional().describe('A short lead, markdown: **bold** what matters.'),
@@ -792,7 +812,7 @@ export function buildThreadbearTools(
         options: z.array(z.object({
           id: z.string().min(1).max(200).describe('Stable option ID, such as A or B.'),
           title: z.string().min(1).max(200),
-          path: z.string().min(1).optional().describe('Image, video (MP4, MOV) or HTML page path, absolute or relative to this thread\u2019s folder; videos play, pages show with scripts off. Or give shots.'),
+          path: z.string().min(1).optional().describe('Image, video (MP4, MOV), sound (MP3, M4A, WAV) or HTML page path, absolute or relative to this thread\u2019s folder; videos and sounds play, pages show with scripts off. Or give shots.'),
           shots: z.array(z.object({
             path: z.string().min(1),
             title: z.string().max(200).optional().describe('What it shows: "Mid-drag". The same across options.'),
@@ -1448,7 +1468,7 @@ export function buildThreadbearTools(
         icon: z
           .string()
           .optional()
-          .describe('A path to a picture (PNG, SVG, ICNS...), an SF Symbol name such as "film", or "auto" to let the librarian find one again.'),
+          .describe('A path to a picture (PNG, ICNS or .ico), an SF Symbol name such as "film", or "auto" to let the librarian find one again.'),
         notion: z
           .string()
           .optional()
@@ -1654,6 +1674,11 @@ export function buildThreadbearTools(
     .optional()
     .describe('Threads the rest of this work waits on, as ids or { thread, until: "it reports the I/O saving" }: hibernates until each finishes (or has done its until), then wakes with their replies; snooze is the latest (1 day if left out). Needs "nothing".');
 
+  const askWhenArg = z
+    .enum(['now', 'jobsEnd'])
+    .optional()
+    .describe('Asks while a job of yours runs: "jobsEnd" holds them until it ends, "now" asks at once.');
+
   // end_turn with one reply (docs/protocol/needs-you.md, "One reply"): the card and
   // a headline; the reply is the message the agent writes next. Nothing to
   // check for a reply, as it comes after; only a second call, a sign-in no
@@ -1712,6 +1737,7 @@ export function buildThreadbearTools(
           .string()
           .optional()
           .describe('Hibernates this thread once the turn is over, until 2h, 1d, tomorrow, an ISO time with its offset, "restart" (the runner next starting), "release" (it starting on a new release) or words saying when ("when the phone arrives"), with needs "nothing": when the user asked for that, or when the rest waits on a message (one wakes it), until it should have come. It only brings the thread back, it doesn\'t run you: for a step of your own later, use schedule_message. Except words for something to happen ("until X ships"): those wake you with a turn to check. Asked after you called end_turn? Call it again with this.'),
+        askWhen: askWhenArg,
         waitFor: waitForArg,
         findings: findingsArg,
       },
@@ -1736,6 +1762,7 @@ export function buildThreadbearTools(
         if (needs === 'you') await checkThreadLinks(asks);
         if (needs === 'you' && hasDeadEnd(asks) && !deadEndNudged(events)) throw new Error(deadEndNudge(asks));
         if (opts.plainCardNote !== false && needs === 'you' && wantsPlainCard(asks) && !plainCardNudged(events)) throw new Error(plainCardNudge());
+        await checkJobs(input, needs, events);
         const projectNote = await projectStepNote(input, needs, parsed?.next, events);
         if (projectNote) throw new Error(projectNote);
         let restart = '';
@@ -1822,6 +1849,7 @@ export function buildThreadbearTools(
           .string()
           .optional()
           .describe('Hibernate this thread once the turn is over, until 30m, 2h, 1d, tomorrow, an ISO time with its offset, "restart" (until the runner next starts), "release" (until it starts on a new release), or words saying when ("when the phone arrives"). Only with needs "nothing": when the user has asked for this thread to be snoozed or hibernated, or when the rest waits on a message (one wakes it), until it should have come. It only brings the thread back, it doesn\'t run you: for a step of your own later, use schedule_message. Except words for something to happen ("until X ships"): those wake you with a turn to check. If they ask after you have called end_turn, call it again with this.'),
+        askWhen: askWhenArg,
         waitFor: waitForArg,
         findings: findingsArg,
       },
@@ -1870,6 +1898,7 @@ export function buildThreadbearTools(
         if (needs === 'you') await checkThreadLinks(asks ?? []);
         if (needs === 'you' && hasDeadEnd(asks ?? []) && !deadEndNudged(events)) throw new Error(deadEndNudge(asks ?? []));
         if (opts.plainCardNote !== false && needs === 'you' && wantsPlainCard(asks ?? []) && !plainCardNudged(events)) throw new Error(plainCardNudge());
+        await checkJobs(args, needs, events);
         const projectNote = await projectStepNote(args, needs, parsed?.next, events);
         if (projectNote) throw new Error(projectNote);
         // Asking Mike to Restart to Update means wanting to know when he
@@ -2451,7 +2480,7 @@ export function oversizeShotsNote(review: { options: { id: string; image: ImageR
 // AGENTS.md, which those threads read, and other people's threads don't
 // get it (30 Oct).
 export const SHOWING_THE_USER =
-  'When you have design options, mockups or wireframes for the user to choose between, put them in front of them with show_options (a review window that steps through them one at a time, then has them pick one and leave notes), not as pins or a list in your reply; their answer comes back as a message. It is for things seen (images, videos, page designs): options in words (names, plans, approaches) go in your reply. ' +
+  'When you have design options, mockups or wireframes for the user to choose between, put them in front of them with show_options (a review window that steps through them one at a time, then has them pick one and leave notes), not as pins or a list in your reply; their answer comes back as a message. It is for things seen or heard (images, videos, sounds, page designs): options in words (names, plans, approaches) go in your reply. ' +
   "For a single file or link they should look at (a doc, a screenshot, a preview URL, a PR), use pin, with show: true to open it in Threadbear's side pane rather than running `open`. " +
   "To put one of Threadbear's own panels in front of them (this thread's Highlights, a patch panel such as the Convex dashboard, Usage), use show_panel.";
 
@@ -2462,6 +2491,13 @@ export const SHOWING_THE_USER =
 // Mike wanted bigger.
 export const RICH_BLOCKS_LINE =
   'Threadbear draws a ```mermaid block in your reply as a diagram, and a ```html block as a small static page (no scripts or network: inline CSS, SVG and data: images only), each with a switch to its source. Use one when a picture explains better than words.';
+
+// Only with the livePages experiment on (experiments/livePages.md). Built
+// 19 Nov, but in its first five days the one page an agent showed was one
+// the build thread asked for: nothing told agents they could (check-in,
+// 24 Nov).
+export const LIVE_PAGES_LINE =
+  'For something that moves or turns round (a 3D model, an animation, a simulation), put a self-contained .html file in your reply like a picture, ![title](/abs/path/page.html): it shows as a live page the user runs in the thread, on the Mac and iPhone. Everything goes inline (scripts, models, data), as it gets no network or other files, and at most 10 MB.';
 
 // Only for a thread that has the pocket tool: the Pocket lives in the Convex
 // backend, so with phone sync off there's no tool to tell it about.
@@ -2520,7 +2556,7 @@ export function patchesLine(guide = guidePath(), exists: (p: string) => boolean 
 // What a Claude session's threadbear server tells it, standing in every
 // turn's context. Measured by the context budget test with the tools
 // (test/unit/context-budget.test.ts), so growth is a choice.
-export function serverInstructions(selfId: string, o: { one: boolean; bulletReplies: boolean; pocket: boolean; projects: boolean }): string {
+export function serverInstructions(selfId: string, o: { one: boolean; bulletReplies: boolean; pocket: boolean; projects: boolean; livePages?: boolean }): string {
   const guide = guideLine();
   const patches = patchesLine();
   return (
@@ -2532,6 +2568,7 @@ export function serverInstructions(selfId: string, o: { one: boolean; bulletRepl
     'Use move_thread when the work belongs in another folder (for example a repo), so this thread runs there from the next turn. ' +
     `${SHOWING_THE_USER} ` +
     `${RICH_BLOCKS_LINE} ` +
+    (o.livePages ? `${LIVE_PAGES_LINE} ` : '') +
     (o.pocket ? `${POCKET_LINE} ` : '') +
     (o.projects ? `${FILING_PROJECTS} ` : '') +
     (o.one
@@ -2542,12 +2579,12 @@ export function serverInstructions(selfId: string, o: { one: boolean; bulletRepl
   );
 }
 
-export function threadbearMcpServer(control: ThreadControl, selfId: string, schedules?: ScheduleControl, projects?: ProjectControl, appRestarts?: AppRestartControl, bulletReplies: () => boolean = () => true, pocket?: () => PocketControl | undefined, oneReply: () => boolean = () => false, gateway?: () => string | undefined, gatewayHealth?: () => Promise<ConnectorService[] | undefined>, remote?: () => RemoteControl | undefined, loadEndTurn?: () => boolean, reviewCanvas?: () => boolean): McpSdkServerConfigWithInstance {
+export function threadbearMcpServer(control: ThreadControl, selfId: string, schedules?: ScheduleControl, projects?: ProjectControl, appRestarts?: AppRestartControl, bulletReplies: () => boolean = () => true, pocket?: () => PocketControl | undefined, oneReply: () => boolean = () => false, gateway?: () => string | undefined, gatewayHealth?: () => Promise<ConnectorService[] | undefined>, remote?: () => RemoteControl | undefined, loadEndTurn?: () => boolean, reviewCanvas?: () => boolean, livePages?: () => boolean): McpSdkServerConfigWithInstance {
   const one = oneReply();
   const server = createSdkMcpServer({
     name: SERVER_NAME,
     version: RUNNER_VERSION,
-    instructions: serverInstructions(selfId, { one, bulletReplies: bulletReplies(), pocket: Boolean(pocket?.()), projects: Boolean(projects) }),
+    instructions: serverInstructions(selfId, { one, bulletReplies: bulletReplies(), pocket: Boolean(pocket?.()), projects: Boolean(projects), livePages: livePages?.() ?? false }),
     tools: buildThreadbearTools(control, selfId, Date.now, schedules, projects, appRestarts, { bulletReplies, pocket, oneReply: () => one, gateway, gatewayHealth, remote, loadEndTurn, reviewCanvas }),
   });
   server.tools = [...ALWAYS_ASK_TOOLS].map((name) => ({ name: name.split('__').at(-1)!, permission_policy: 'always_ask' as const }));

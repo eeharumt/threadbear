@@ -25,6 +25,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { atomicWriteFileSync } from './fsutil.ts';
 import { scrubText } from './redaction.ts';
+import { LISTING_GIT_CONFIG, untrustedGitEnv } from './safe-git.ts';
 import { RELEASE_NAME, repoKey, signersPath, TAG_PREFIX, UPSTREAM_REFS, verifiedRelease, type SignedTag } from './upstream.ts';
 import { LAND_TIMES_FILE } from './land-queue.ts';
 import type { PatchInfo } from './protocol.ts';
@@ -235,10 +236,13 @@ export function scrubForPosting(text: string, home = os.homedir(), user = os.use
 // Replacement objects off: a refs/replace/ entry would have a release's
 // commit read as a fork's own, and its messages pass for Mike's (Codex's
 // review, 22 Nov).
-const GIT_ENV = { ...process.env, GIT_NO_REPLACE_OBJECTS: '1' };
+// Grafts and the commit-graph off too, and no fetching or hooks, as for the
+// release check itself (Gemini's review of Daybreak 180, 24 Nov 2026).
+const GIT_ENV = { ...untrustedGitEnv(), GIT_NO_REPLACE_OBJECTS: '1', GIT_GRAFT_FILE: '/dev/null', GIT_NO_LAZY_FETCH: '1' };
+const GIT_CONFIG = [...LISTING_GIT_CONFIG, '-c', 'core.commitGraph=false', '-c', 'advice.graftFileDeprecated=false'];
 
 function git(cwd: string, args: string[]): string | undefined {
-  const r = spawnSync('git', ['-C', cwd, ...args], { encoding: 'utf8', env: GIT_ENV });
+  const r = spawnSync('git', [...GIT_CONFIG, '-C', cwd, ...args], { encoding: 'utf8', env: GIT_ENV });
   return r.status === 0 ? r.stdout.trim() : undefined;
 }
 
@@ -270,7 +274,7 @@ function knownReleases(cwd: string): Known[] {
 }
 
 function contains(cwd: string, rev: string, release: Release): boolean {
-  return spawnSync('git', ['-C', cwd, 'merge-base', '--is-ancestor', release.rev, rev], { env: GIT_ENV }).status === 0;
+  return spawnSync('git', [...GIT_CONFIG, '-C', cwd, 'merge-base', '--is-ancestor', release.rev, rev], { env: GIT_ENV }).status === 0;
 }
 
 // The release main has now, and the one it had before: main's reflog,
@@ -343,7 +347,7 @@ export async function buildCheckup(i: CheckupInputs): Promise<Checkup> {
   const cache = new Map<string, boolean>();
   const known = (message: string) => {
     if (!tag) return false;
-    if (!cache.has(message)) cache.set(message, spawnSync('git', ['-C', i.checkout, 'grep', '-q', '-F', '-e', message, tag, '--', 'runner/src'], { encoding: 'utf8', env: GIT_ENV }).status === 0);
+    if (!cache.has(message)) cache.set(message, spawnSync('git', [...GIT_CONFIG, '-C', i.checkout, 'grep', '-q', '-F', '-e', message, tag, '--', 'runner/src'], { encoding: 'utf8', env: GIT_ENV }).status === 0);
     return cache.get(message)!;
   };
   const inRelease = (file: string) => {
@@ -352,7 +356,7 @@ export async function buildCheckup(i: CheckupInputs): Promise<Checkup> {
     return !rel.startsWith('..') && !path.isAbsolute(rel) && git(i.checkout, ['cat-file', '-e', `${tag}:${rel.split(path.sep).join('/')}`]) !== undefined;
   };
   const note = i.note?.trim().replace(/\s+/g, ' ').slice(0, MAX_NOTE);
-  const stepKnown = (name: string) => !!tag && spawnSync('git', ['-C', i.checkout, 'grep', '-q', '-F', '-e', `"${name}"`, tag, '--', 'check.sh'], { encoding: 'utf8', env: GIT_ENV }).status === 0;
+  const stepKnown = (name: string) => !!tag && spawnSync('git', [...GIT_CONFIG, '-C', i.checkout, 'grep', '-q', '-F', '-e', `"${name}"`, tag, '--', 'check.sh'], { encoding: 'utf8', env: GIT_ENV }).status === 0;
   const checks = landingChecks(i.landTimes ?? readLandTimes(i.checkout), since, stepKnown);
   return { release, previous, sinceDays, ...countErrors(i.logLines, since, known), updateFailing: i.updateFailing, ...failingPatches(i.patches, inRelease), ...(checks ? { checks } : {}), ...(note ? { note } : {}) };
 }

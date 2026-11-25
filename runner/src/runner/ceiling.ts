@@ -18,31 +18,11 @@
 import type { Runner, ThreadState } from '../runner.ts';
 import type { RunnerPart } from './part.ts';
 import type { PermissionMode } from '../protocol.ts';
-import { isPermissionMode } from '../protocol.ts';
 import type { QueuedSend } from '../store.ts';
-import { above, raises, type Authority } from '../threadbear-mcp.ts';
+import { above, CEILING_REFUSED, ceilingMode, higherMode, lowerMode, type Authority } from '../access.ts';
+export { CEILING_REFUSED, ceilingMode, higherMode, lowerMode };
 import { senderPrefix } from './nested.ts';
 import { sentByAgent } from '../protocol.ts';
-
-// What a draining runner says when a schedule's run is for a thread above
-// its ceiling there (handover.ts, drain.sendScheduled; schedules.ts).
-export const CEILING_REFUSED = 'Not sent: this thread has more access now than the thread that set the schedule up had.';
-
-// A ceiling as saved: one that isn't a mode (a record from before, a moved
-// thread's record from another Mac) counts as the least, Ask.
-export function ceilingMode(v: unknown): PermissionMode {
-  return isPermissionMode(v) ? (v === 'plan' ? 'ask' : v) : 'ask';
-}
-
-// The more of two modes.
-export function higherMode(a: PermissionMode, b: PermissionMode): PermissionMode {
-  return raises(a, b) ? a : b;
-}
-
-// The less of two modes.
-export function lowerMode(a: PermissionMode, b: PermissionMode): PermissionMode {
-  return raises(a, b) ? b : a;
-}
 
 export const ceilingPart = {
   // Whether words with this ceiling may go to the agent of a thread with

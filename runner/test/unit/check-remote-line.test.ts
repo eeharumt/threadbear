@@ -88,6 +88,28 @@ test('a slow copy stays in line rather than copying again elsewhere', () => {
   assert.deepEqual(r.copies, ['h1']);
 });
 
+test("a landing's check leaves the line for a free host even after a slow copy, and asks its hosts to go first", () => {
+  // 23 Nov: a landing's copy to a loaded Tinker Desk took 949 s, so it stayed
+  // in line there for another 36 minutes, and every landing behind it waited.
+  const s = setup({ h1: { state: 'busy', queue: 600 }, h2: { state: 'busy', freeAfter: 1, ...linux } });
+  fs.writeFileSync(path.join(s.repo, 'change.ts'), '\n');
+  const r = s.run('h1,h2', 0, '', { ...ENV, THREADBEAR_CHECK_FIRST: '1' });
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /leaving the line on h1/);
+  assert.match(r.stdout, /ran on h2 now/);
+  assert.deepEqual(r.copies, ['h1', 'h2']);
+  assert.deepEqual(r.turns.trim().split('\n'), ['h1 first wait', 'h2 first now']);
+  // Withdrawn from h1's line, its mark there as a landing's check goes too.
+  assert.match(r.ssh, /^h1 mv '[^']*\/runs\/(\d+-\d+-\d+)' '[^']*\/runs\/\1\.withdrawn'; rm -f '[^']*\/first\/\1'$/m);
+});
+
+test("a check that isn't a landing's takes its turn after any landing's", () => {
+  const s = setup({ h1: { state: 'busy', queue: 1 } });
+  const r = s.run('h1', 3600, '', ENV);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.deepEqual(r.turns.trim().split('\n'), ['h1 after wait']);
+});
+
 test('a line that clears before the first look runs there, with nothing else to it', () => {
   // The default 30 s between looks, and a 1 s line.
   const s = setup({ h1: { state: 'busy', queue: 1 }, h2: { state: 'busy', ...linux } });

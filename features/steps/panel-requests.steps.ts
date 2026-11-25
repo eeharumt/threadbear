@@ -30,7 +30,12 @@ Then('the pane is showing the pinned file', async function (this: ThreadbearWorl
   const file = pinned.get(this);
   assert.ok(file, 'nothing was pinned');
   await this.until(`the pane to show ${path.basename(file)}`, (d) => previewLine(d)?.endsWith(path.basename(file)), 30_000);
-  fs.rmSync(path.dirname(file), { recursive: true, force: true });
+  // Windows won't delete a file the pane still has open: left in the temp folder.
+  try {
+    fs.rmSync(path.dirname(file), { recursive: true, force: true });
+  } catch (e) {
+    if (process.platform !== 'win32') throw e;
+  }
 });
 
 When('the agent continues replying while the pinned file loads', async function (this: ThreadbearWorld) {
@@ -67,7 +72,12 @@ When('I look away until the failed highlights fetch stops', async function (this
 Then('the pane has no file preview', async function (this: ThreadbearWorld) {
   assert.equal(previewLine(await this.app.dump()), undefined);
   const file = pinned.get(this)!;
-  fs.rmSync(path.dirname(file), { recursive: true, force: true });
+  // Windows won't delete a file the pane still has open: left in the temp folder.
+  try {
+    fs.rmSync(path.dirname(file), { recursive: true, force: true });
+  } catch (e) {
+    if (process.platform !== 'win32') throw e;
+  }
 });
 
 When("I'm looking at the app", async function (this: ThreadbearWorld) {

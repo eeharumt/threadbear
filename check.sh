@@ -97,6 +97,11 @@
 #                 again. tb land uses it to find which landing of a group
 #                 broke the group's check (THREADBEAR_CHECK_ONLY is the same
 #                 thing, for a check command it can't add options to).
+#   --part linux|mac  just the steps a Linux host can run (LINUX_STEPS in
+#                 scripts/check-remote.sh), or just the rest, which need a
+#                 Mac. check-remote.sh splits a landing's check this way
+#                 across a Linux and a Mac check host, run at the same time;
+#                 the steps of the other part print nothing.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -114,6 +119,7 @@ E2E=0
 SHOTS=""
 LOCAL=0
 ONLY=""
+PART=""
 # tb land runs whatever command the repo's patch names as its check, so it
 # asks for --only through the environment; from here on it's the option, which
 # is what reaches a check host.
@@ -153,6 +159,9 @@ while [ $# -gt 0 ]; do
       [ $# -ge 2 ] && [ -n "$2" ] || { echo "--only needs the steps to run" >&2; exit 2; }
       ONLY="$2"
       shift ;;
+    --part)
+      case "${2:-}" in linux|mac) PART="$2" ;; *) echo "--part takes linux or mac" >&2; exit 2 ;; esac
+      shift ;;
     -h|--help) awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"; exit 0 ;;
     *) echo "Unknown option: $1" >&2; exit 2 ;;
   esac
@@ -177,6 +186,23 @@ fi
 plain() {
   local LC_ALL=C
   [[ "$1" =~ $2 ]]
+}
+# --part: which steps a Linux host runs is check-remote.sh's list, which
+# also decides which host a run can go to, so the two can't differ. A step
+# the list doesn't name is a Mac's, so a new one runs on a Mac until it's
+# added there.
+LINUX_STEPS=""
+if [ -n "$PART" ]; then
+  LINUX_STEPS="$(sed -n "s/^LINUX_STEPS='\(.*\)'\$/\1/p" "$ROOT/scripts/check-remote.sh" 2>/dev/null | head -1)"
+  [ -n "$LINUX_STEPS" ] || { echo "--part needs LINUX_STEPS from scripts/check-remote.sh, and it isn't there." >&2; exit 2; }
+fi
+# in_part <step>: whether the step is this run's to run or skip (always,
+# without --part). The steps that install packages are in both: they only
+# run when the packages are missing, and either part may need them.
+in_part() {
+  [ -n "$PART" ] || return 0
+  [ "${1% packages}" = "$1" ] || return 0
+  if plain "$1" "$LINUX_STEPS"; then [ "$PART" = linux ]; else [ "$PART" = mac ]; fi
 }
 # Step names and test file paths only: it's passed to a check host's shell
 # and its file names to node.
@@ -355,6 +381,7 @@ swift_needed() {
 IOS_NEEDS="^ios/|^shared/cases/$(links_out ios '.')"
 
 skip() {
+  in_part "$1" || return 0
   printf 'skip  %-20s (%s; --all runs it)\n' "$1" "$2"
 }
 
@@ -367,6 +394,7 @@ if [ -z "$XCODE_DIR" ]; then XCODE_DIR="$(xcode-select -p 2>/dev/null || true)";
 NO_XCODE=""
 if [ -z "$XCODE_DIR" ] || [ "${XCODE_DIR%/CommandLineTools}" != "$XCODE_DIR" ]; then NO_XCODE=1; fi
 swift_test_step() {
+  in_part "$1" || return 0
   if [ -n "$NO_XCODE" ]; then
     printf 'skip  %-20s (needs Xcode; only the Command Line Tools are here)\n' "$1"
   else
@@ -472,6 +500,8 @@ ran_asked() {
 # asked for need them.
 left_out() {
   [ "${1% packages}" = "$1" ] || return 1
+  # The other part's step: its own run says how it went.
+  in_part "$1" || return 0
   only_entry "$1" >/dev/null && return 1
   printf 'skip  %-20s (--only left it out)\n' "$1"
 }
@@ -520,6 +550,32 @@ LIMITED=("$NODE" "$ROOT/scripts/limit-step.mjs"
 # test that fails on its own as well still fails the step.
 RERUN_MAX_FILES=8
 UNIT_FAILED_FILES=""
+# On GitHub the job's log is all there is to watch, and with the tests'
+# output in a file this step printed nothing until it ended: the Mac jobs
+# were stopped at their 30 minutes 18 runs in a row (22 to 23 Nov 2026)
+# and no log said which file they were on. So there the process that runs
+# the files says each minute which are still going, and the slowest at the
+# end (test/helpers/progress-reporter.mjs), on its stderr, which unit_tests
+# sends to this script's output rather than to the log (the test files' own
+# stderr is piped to that process, so it still goes to the log). Only where
+# the reporter is: a test's stand-in checkout has none, and a reporter node
+# can't load fails the run.
+UNIT_PROGRESS=()
+if [ -n "${GITHUB_ACTIONS:-}" ] && [ -f "$ROOT/runner/test/helpers/progress-reporter.mjs" ]; then
+  UNIT_PROGRESS=(--test-reporter=./test/helpers/progress-reporter.mjs --test-reporter-destination=stderr)
+fi
+# unit_tests <log> <command...>: runs it in runner/ with its output in <log>,
+# and its stderr too unless that's the progress above (through fd 3).
+unit_tests() {
+  local out="$1" code
+  shift
+  : >"$out"
+  if [ "${#UNIT_PROGRESS[@]}" -gt 0 ]; then exec 3>&1; else exec 3>>"$out"; fi
+  (cd "$ROOT/runner" && "$@") >>"$out" 2>&3 3>&-
+  code=$?
+  exec 3>&-
+  return "$code"
+}
 runner_unit_tests() {
   local name="runner unit tests" dir="$ROOT/runner"
   local log="$LOGS/runner-unit-tests.log" list="$LOGS/runner-unit-tests.failed"
@@ -586,10 +642,22 @@ runner_unit_tests() {
       rm -f "$keys"
     fi
   fi
-  local run=(node --import=./test/helpers/clean-env.ts --test --test-timeout=300000 --test-force-exit --test-reporter=spec)
-  if (cd "$dir" && "${run[@]}" --test-reporter-destination=stdout \
+  # As node --test runs them, through test/helpers/run-test-files.mjs, which
+  # starts the longest first by the times it keeps beside the pass records:
+  # node starts them in order of name, and the run waited on long files late
+  # in the alphabet (24 Nov 2026). package.json's test script is the same
+  # (update.test.ts holds them together). A test's stand-in checkout without
+  # it runs node --test, as before.
+  local run=(node ./test/helpers/run-test-files.mjs --import=./test/helpers/clean-env.ts --test-timeout=300000 --test-force-exit --test-reporter=spec)
+  local times=()
+  if [ ! -f "$dir/test/helpers/run-test-files.mjs" ]; then
+    run=(node --import=./test/helpers/clean-env.ts --test --test-timeout=300000 --test-force-exit --test-reporter=spec)
+  elif [ -n "$PASSES" ]; then
+    times=(--times="$PASSES/test-times")
+  fi
+  if unit_tests "$log" "${run[@]}" --test-reporter-destination=stdout \
       --test-reporter=./test/helpers/failed-files-reporter.mjs --test-reporter-destination="$list" \
-      ${record[@]+"${record[@]}"} "${targets[@]}") >"$log" 2>&1; then
+      ${record[@]+"${record[@]}"} ${UNIT_PROGRESS[@]+"${UNIT_PROGRESS[@]}"} ${times[@]+"${times[@]}"} "${targets[@]}"; then
     printf 'ok    %-20s %4ss%s\n' "$name" "$((SECONDS - start))" "$note"
     record_test_passes "$passed"
     return
@@ -618,8 +686,9 @@ runner_unit_tests() {
     # (With the pass reporter too: the files that passed on their own, no
     # test of theirs skipped, are the ones recorded. Codex's review.)
     local again=()
-    [ "${#record[@]}" = 0 ] || again=(--test-reporter-destination=stdout --test-reporter=./test/helpers/passed-files-reporter.mjs --test-reporter-destination="$passed.again")
-    if (cd "$dir" && "${run[@]}" --test-concurrency=1 ${again[@]+"${again[@]}"} "${files[@]}") >"$relog" 2>&1; then
+    [ "${#record[@]}" = 0 ] || again=(--test-reporter=./test/helpers/passed-files-reporter.mjs --test-reporter-destination="$passed.again")
+    if unit_tests "$relog" "${run[@]}" --test-reporter-destination=stdout --test-concurrency=1 \
+        ${again[@]+"${again[@]}"} ${UNIT_PROGRESS[@]+"${UNIT_PROGRESS[@]}"} "${files[@]}"; then
       printf 'ok    %-20s %4ss  (passed on a second run of the files that failed:)\n' "$name" "$((SECONDS - start))"
       record_test_passes "$passed.again"
       # The tests that failed the first time: the spec reporter's ✖ lines,
@@ -848,7 +917,7 @@ pick_cargo() {
 # desktop/'s Rust as cargo fmt writes it (desktop/rustfmt.toml, with the
 # rustfmt of rust-toolchain.toml), --quick included: no build, a few seconds,
 # so it runs wherever this does, this Mac included. The log ends with the fix.
-if [ "$APP_ONLY" = 0 ] && [ "$RUNNER_ONLY" = 0 ]; then
+if [ "$APP_ONLY" = 0 ] && [ "$RUNNER_ONLY" = 0 ] && in_part "desktop format"; then
   if needed '^desktop/|^rust-toolchain\.toml$'; then
     FMT_CARGO="$(pick_cargo)"
     if [ -n "$FMT_CARGO" ]; then
@@ -871,6 +940,10 @@ fi
 if [ "$APP_ONLY" = 0 ] && [ "$RUNNER_ONLY" = 0 ]; then
   if ! needed "$DESKTOP_NEEDS"; then
     skip "desktop core tests" "nothing desktop/ reads changed"
+  elif ! in_part "desktop core tests" && { [ "$PART" != mac ] || [ "$QUICK" = 0 ] || [ "$(uname -s)" != Darwin ] || [ "$FALLBACK" = 1 ] || [ "$E2E" = 1 ]; }; then
+    # The other part's: nothing here builds Rust (but the Mac part's macOS
+    # check of the app, below, on a check host).
+    :
   elif [ "$FALLBACK" = 1 ] || { [ "$E2E" = 1 ] && [ "$LOCAL" = 0 ]; }; then
     # This is the Mac someone's working on (no check host could take the run,
     # or --e2e, which runs here for the claude login), and Rust builds stay
@@ -939,6 +1012,24 @@ if [ "$APP_ONLY" = 0 ] && [ "$RUNNER_ONLY" = 0 ]; then
       # here rather than in self-update. Two forks' updates were stuck on
       # just that (emilsbauga's and TeeLusk's, 14 to 16 Nov).
       cargo_step "desktop app check (as installed)" check --locked -p threadbear-gpui --features frame-stats
+      # Those two run on the Linux host when a landing's check is split
+      # (--part, scripts/check-remote.sh), which builds none of the app's
+      # macOS code: its #[cfg(target_os = "macos")] Rust and the Objective-C
+      # and Swift shims desktop/gpui/build.rs compiles. So the Mac half
+      # checks both of those on macOS too (Codex's reviews), off the Linux
+      # half's critical path: the Mac half is short. Without --part, a run
+      # on a Mac has them in the two above already; --only naming them runs
+      # them, as tb land does to find who broke one.
+      if [ "$(uname -s)" = Darwin ]; then
+        for name in "desktop macos check" "desktop macos check as installed"; do
+          [ "$PART" = mac ] || { [ -n "$ONLY" ] && only_entry "$name" >/dev/null; } || continue
+          if [ "$name" = "desktop macos check" ]; then
+            cargo_step "$name" check --locked -p threadbear-gpui --features automation --all-targets
+          else
+            cargo_step "$name" check --locked -p threadbear-gpui --features frame-stats
+          fi
+        done
+      fi
     fi
     [ "$QUICK" = 1 ] || cargo_step "desktop build" check --locked --workspace --all-targets
   fi
@@ -1004,6 +1095,8 @@ fi
 # Convex's Swift library (convex-swift) ships for Apple silicon only, so
 # on an Intel Mac the kit can't build at all.
 if [ "$RUNNER_ONLY" = 1 ]; then
+  :
+elif ! in_part "iphone kit tests"; then
   :
 elif [ "$(uname -s)" = Darwin ] && [ "$(uname -m)" != arm64 ]; then
   printf 'skip  %-20s (%s)\n' "iphone kit tests" "Convex's Swift library is Apple silicon only"

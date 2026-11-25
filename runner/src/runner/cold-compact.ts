@@ -20,7 +20,7 @@
 // Each method's `this` is the Runner; runner.ts puts them on its prototype.
 import crypto from 'node:crypto';
 import type { Runner, ThreadState } from '../runner.ts';
-import { fromMike, isAutomaticInput } from '../runner.ts';
+import { fromMike, isAutomaticInput } from './messages.ts';
 import type { RunnerPart } from './part.ts';
 import type { QueuedSend } from '../store.ts';
 import type { TurnResult } from '../adapters/types.ts';

@@ -112,6 +112,26 @@ On Windows, Cursor can also run the newest complete version installed under
   its MCP calls say `_meta.mcp: { server, tool }`. Keys for Google's API in
   the runner's environment are blanked, so its Google sign-in is what's used.
   It has no updater, so Update does nothing for it.
+- **Gemini's plan usage** (since 23 Nov 2026). Antigravity's turns carry no
+  usage reading, so the runner reads the Google plan's quota itself with the
+  server's own `/usage` command, which it answers in its ACP layer with no
+  model turn and no quota spent: a short-lived process in an empty temp folder
+  (`session/new`, then `session/prompt` with the text `/usage` only if the
+  session's `available_commands_update` lists `usage`, then `session/close`).
+  It's read a minute after the runner starts, whenever its last reading or
+  try is 10 minutes old (`LIMITS_POLL_MS`), and 5 seconds after a Gemini turn
+  ends, at most every 2 minutes (`runner/src/limit-recheck.ts`). The answer
+  is markdown, not a contract (`runner/src/adapters/acp/agy-usage.ts`): the
+  "Gemini Models" group's weekly and 5-hour lines become the login's
+  `weekly` and `five_hour` windows (remaining percent, resets read only when
+  they say UTC), which decide its room as Claude's and Codex's do, with
+  `blocked` when either is under 1%. Any other group ("Claude and GPT
+  models") adds a `weekly_model` window, `Weekly <group>`, and an `other`
+  one, `5-hour <group>`, which never decide it: nor when a block ends, nor
+  whether a login a turn ran dry is back. `plan` is session/new's
+  `_meta.antigravity.tier.name` ("Google AI Ultra"), sent only with a reading. An answer that doesn't
+  read, or no Gemini group (or two), is no reading: nothing is recorded and
+  nothing is shown as an error. The login's token is never read.
 - **Cards for ACP tools.** Every frame of a tool call (its updates and its
   permission requests) is kept by id for the session, and a call is judged
   on all of them: what it said earlier can't be washed out by a later
@@ -262,6 +282,10 @@ type StandingInstructions = {
   pair being put back: those are Mike's own words from before. And news told by
   message, not in a fresh session's instructions, can fade in a compaction, as a
   project's joined line can.
+
+With the `recipes` experiment on, the habits of the recipes the user has
+switched on are given after these, in the same message and the same note
+when either changes (projects.md, "Habits").
 
 ## Shared memory
 
@@ -720,9 +744,41 @@ thread to another login when the one it's on runs out of room.
   reads each login whose reading says blocked or under 1% again, if that
   reading is 10 minutes old or more and its provider can read without a
   turn (Codex: `account/rateLimits/read` in a short-lived app-server;
-  `runner/src/limit-recheck.ts`). The answer goes into the usage store
+  Grok: `_x.ai/billing` in a short-lived `grok agent`, since 24 Nov 2026;
+  `runner/src/limit-recheck.ts`). Gemini is read this way all the time, not
+  only when it's out (ACP agents, "Gemini's plan usage"). The answer goes into the usage store
   like a turn's, so room lifts the block and threads waiting for room
-  carry on by themselves. Signed-out and plan-ended logins aren't read.
+  carry on by themselves. A recheck that finds room in every window it
+  names (but Gemini's other groups, which never decide: "Gemini's plan
+  usage") also ends the block a turn that ran dry put on the login, and a
+  pool thread waiting on that same login carries on there before the reset
+  its wait named (a top-up, or a reset used outside Threadbear). A turn's
+  own reading never does: one from another session can say the login has
+  room while the model that ran out still has none. A turn's reading is
+  recorded under the login its CLI runs on, even if the thread was moved
+  meanwhile. While a login is held out after a turn ran it dry, the store
+  keeps it blocked whatever a turn's reading says, and it's rechecked every
+  10 minutes from the last recheck, however fresh the turns' readings are.
+  A login counts as back only with more room than it read as when it ran
+  dry (so a 402 while Grok still reads room doesn't send threads back to be
+  refused), or when Grok says a prepaid or on-demand balance is carrying it.
+  Signed-out and plan-ended logins aren't read. A login with no reading at
+  all is read once, so a Grok login shows its room before its first turn.
+- **Grok's readings** (`runner/src/adapters/acp/grok-billing.ts`). Grok's
+  `_x.ai/billing` gives the share of the plan's period used
+  (`creditUsagePercent`) and the period (`USAGE_PERIOD_TYPE_WEEKLY`, its
+  end): one `weekly` window (`monthly`, `daily` or `other` for other
+  periods), `blocked` when it's used up and no prepaid balance or on-demand
+  room is left, and the tier as `plan`. A Grok thread reads it on its own
+  process after a turn that ran out of usage, and at
+  most every 5 minutes after completed turns, just after the turn's result
+  (recorded under the login the CLI ran on). A Grok turn that fails with
+  HTTP 402 or Grok's words for running out ("usage balance exhausted", "out
+  of credits", "spending limit", "usage limit reached") ends `failed` with
+  `errorKind: "usageLimit"`, and its `error` names the login and Grok's
+  own reason, read from the JSON-RPC error's `data.message` (or Grok's
+  `retry_state` and `turn_completed` notes) rather than its bare "Internal
+  error" (`runner/src/adapters/acp/connection.ts`, `AcpRpcError`).
 - **Carrying on by itself is Mike's to turn off**, per thread:
   `threads.update { carryOnAtReset: false }` ends any wait for room (with
   a note) and stops later limits starting one; pool moves to a login with

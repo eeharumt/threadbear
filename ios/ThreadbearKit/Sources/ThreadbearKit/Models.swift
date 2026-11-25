@@ -309,6 +309,10 @@ public struct PhoneThread: Codable, Sendable, Hashable, Identifiable {
     /// Whether it's shared by link, and the link's slug (backend API 7).
     /// Nil when it's never been shared.
     public var share: ThreadShare?
+    /// What it's waiting on, as the runner works it out (`WaitState`; read
+    /// it through `wait`). Nil from a runner before 23 Nov 2026; a value
+    /// this build doesn't know is drawn as done.
+    public var waitState: String?
 
     public init(
         threadId: String, runnerId: String = "mac", title: String, cwd: String = "~/ThreadbearThreads",
@@ -319,8 +323,9 @@ public struct PhoneThread: Codable, Sendable, Hashable, Identifiable {
         pendingApproval: PendingApproval? = nil, earliestSeq: Double? = nil,
         asks: [PhoneAsk]? = nil, asksSeq: Double? = nil, next: [String]? = nil,
         needs: String? = nil, pendingReviews: Double? = nil, waitingForRoom: PhoneWaitingForRoom? = nil,
-        links: [PhoneLink]? = nil, asked: String? = nil, looseEnds: [PhoneLooseEnd]? = nil
+        links: [PhoneLink]? = nil, asked: String? = nil, looseEnds: [PhoneLooseEnd]? = nil, waitState: String? = nil
     ) {
+        self.waitState = waitState
         self.looseEnds = looseEnds
         self.asked = asked
         self.threadId = threadId

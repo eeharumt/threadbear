@@ -65,6 +65,7 @@ case "$prefix" in *.partial) ;; *) echo "not a .partial prefix: $prefix" >&2; ex
 native="$prefix/${NATIVE.join('/')}"
 mkdir -p "$prefix/node_modules/@openai/codex/bin" "$(dirname "$native")"
 if [ -f "${root}/fail-$v" ]; then echo "npm ERR! 404 Not Found" >&2; exit 1; fi
+if [ -f "${root}/unpublished-$v" ]; then echo "npm error code E404" >&2; echo "npm error 404 Not Found - GET https://registry.npmjs.org/@openai/codex/-/codex-$v.tgz - Not found" >&2; exit 1; fi
 printf '{"name":"@openai/codex","version":"%s"}\\n' "$v" > "$prefix/node_modules/@openai/codex/package.json"
 echo "// launcher" > "$prefix/node_modules/@openai/codex/bin/codex.js"
 cat > "$native" <<EOS
@@ -456,6 +457,25 @@ test('codex: going back holds the version left behind, so a check doesn\'t put i
   // 0.165.0 was cleaned up once 0.166.0 and 0.164.0 were the two kept, so
   // going back to it downloaded it again; "Update anyway" used the kept 0.166.0.
   assert.deepEqual(t.npm.installs(), ['0.164.0', '0.165.0', '0.166.0', '0.165.0']);
+});
+
+test('codex: a release npm lists before its download is up waits for the next check, not a failure', async () => {
+  const t = setup();
+  t.u.update('codex', { version: '0.164.0' });
+  await t.u.settled();
+  fs.writeFileSync(path.join(t.root, 'unpublished-0.165.0'), '');
+  t.u.update('codex', { version: '0.165.0' });
+  await t.u.settled();
+  let c = of(t.u.list(), 'codex');
+  assert.equal(c.update?.state, 'unchanged');
+  assert.match(c.update?.message ?? '', /isn't ready to download yet/);
+  assert.equal(c.installedVersion, '0.164.0');
+  // Once it's up, the next try installs it.
+  fs.rmSync(path.join(t.root, 'unpublished-0.165.0'));
+  t.u.update('codex', { version: '0.165.0' });
+  await t.u.settled();
+  c = of(t.u.list(), 'codex');
+  assert.equal(c.installedVersion, '0.165.0');
 });
 
 test('codex: a failed install leaves no .partial folder and changes nothing', async () => {

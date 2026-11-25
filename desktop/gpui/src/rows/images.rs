@@ -106,145 +106,11 @@ pub(crate) fn image_frames(
 }
 
 /// An image's size in pixels, or the Swift app's stand-in while it's unknown.
-pub(crate) fn pixel_size(image: &ImageRef) -> (f32, f32) {
+fn pixel_size(image: &ImageRef) -> (f32, f32) {
     match (image.width, image.height) {
         (Some(w), Some(h)) if w > 0 && h > 0 => (w as f32, h as f32),
         _ => (160., 120.),
     }
-}
-
-/// Where a grid's pictures come from: this Mac's files, or another Mac's
-/// runner (`runner`), asked through `client`, `redraw` told when one comes.
-pub(crate) struct TilesFrom {
-    pub(crate) runner: Option<String>,
-    pub(crate) runner_name: String,
-    pub(crate) client: std::sync::Arc<threadbear_client::runner::Client>,
-    pub(crate) redraw: AnyWeakEntity,
-}
-
-/// A message's or a tool's pictures as tiles at `frames`: a click opens the
-/// in-app viewer, this Mac's drag out as files, and another Mac's are asked
-/// of its runner and say so quietly while they come (the transcript's, and
-/// a Feed card's, inbox_feed.rs).
-pub(crate) fn picture_grid(
-    images: &[ImageRef],
-    frames: Vec<Frame>,
-    height: f32,
-    width: f32,
-    from: &TilesFrom,
-    cx: &mut App,
-) -> Div {
-    use crate::file_drag::FileDragExt as _;
-    let file_name = |path: &str| {
-        std::path::Path::new(path)
-            .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_default()
-    };
-    let mut grid = div().relative().h(px(height)).w(px(width)).flex_none();
-    let all: Vec<ImageRef> = images.to_vec();
-    // Another Mac's thread: its pictures are asked of the runner (remote_pictures.rs).
-    let remote = from.runner.clone();
-    let runner_name = from.runner_name.clone();
-    for (i, (image, frame)) in images.iter().zip(frames).enumerate() {
-        let path = image.path.clone();
-        // Its file's name, for VoiceOver and for scripts.
-        let label = SharedString::from(file_name(&path));
-        let tile_images = all.clone();
-        let tile = div()
-            .id(("image", i))
-            .absolute()
-            .left(px(frame.x))
-            .top(px(frame.y))
-            .w(px(frame.w))
-            .h(px(frame.h))
-            .rounded(px(8.))
-            .overflow_hidden();
-        let Some(runner) = remote.clone() else {
-            grid = grid.child(
-                tile.cursor_pointer()
-                    .tip(crate::viewer::TILE_TIP)
-                    // The in-app viewer, not the file's default app: only a
-                    // real picture opens, and nothing is ever run (viewer.rs).
-                    .on_click(move |_, window, cx| {
-                        crate::viewer::open_from_tile(&tile_images, i, None, window, cx)
-                    })
-                    // Dragged, it goes out as the file itself (file_drag.rs).
-                    .file_drag(Some(path.clone()))
-                    .child(
-                        img(super::markdown::file_picture(&path))
-                            .w(px(frame.w))
-                            .h(px(frame.h))
-                            .rounded(px(8.))
-                            .object_fit(ObjectFit::Cover),
-                    )
-                    .test_support()
-                    .role(Role::Image)
-                    .aria_label(label),
-            );
-            continue;
-        };
-        let picture =
-            crate::remote_pictures::picture(&runner, &path, &from.client, from.redraw.clone(), cx);
-        let words = crate::remote_pictures::words(&picture, &runner_name);
-        let tile = match picture {
-            // In the viewer on a click, as this Mac's are, from the bytes
-            // that Mac sent (Mike, 18 Nov). No drag: it isn't a file here.
-            crate::remote_pictures::Picture::Ready(bytes) => {
-                let runner = runner.clone();
-                tile.cursor_pointer()
-                    .tip(crate::viewer::TILE_TIP)
-                    .on_click(move |_, window, cx| {
-                        crate::viewer::open_from_tile(&tile_images, i, Some(&runner), window, cx)
-                    })
-                    .child(
-                        img(bytes)
-                            .w(px(frame.w))
-                            .h(px(frame.h))
-                            .rounded(px(8.))
-                            .object_fit(ObjectFit::Cover),
-                    )
-            }
-            // Why it couldn't be got, on hover; a click asks again.
-            crate::remote_pictures::Picture::Failed(why) => {
-                let me = from.redraw.clone();
-                tile.cursor_pointer().tip(why).on_click(move |_, _, cx| {
-                    crate::remote_pictures::retry(&runner, &path, cx);
-                    if let Some(me) = me.upgrade() {
-                        cx.notify(me.entity_id());
-                    }
-                })
-            }
-            _ => tile,
-        };
-        let (fill, faint) = (
-            crate::style::code_background(cx),
-            crate::style::faint_text(cx),
-        );
-        grid = grid.child(
-            tile.when_some(words, |s, words| {
-                s.bg(fill)
-                    .border(gpui_kit::px(0.5))
-                    .border_color(crate::style::card_border(cx))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .px(px(4.))
-                    .child(
-                        div()
-                            .min_w_0()
-                            .truncate()
-                            .text_size(px(crate::style::size::WORK - 1.))
-                            .text_color(faint)
-                            .child(words),
-                    )
-            })
-            .test_support()
-            .role(Role::Image)
-            .aria_label(label),
-        );
-    }
-    grid
 }
 
 impl ThreadPane {
@@ -265,8 +131,18 @@ impl ThreadPane {
         width: f32,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        let runner = self.summary.runner_id.clone();
-        let runner_name = runner
+        use crate::file_drag::FileDragExt as _;
+        let file_name = |path: &str| {
+            std::path::Path::new(path)
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default()
+        };
+        let mut grid = div().relative().h(px(height)).w(px(width)).flex_none();
+        let all: Vec<ImageRef> = images.to_vec();
+        // Another Mac's thread: its pictures are asked of the runner (remote_pictures.rs).
+        let remote = self.summary.runner_id.clone();
+        let runner_name = remote
             .as_deref()
             .and_then(|id| {
                 self.composer
@@ -276,13 +152,114 @@ impl ThreadPane {
                     .map(|app| app.read(cx).runner_name_of(id))
             })
             .unwrap_or_default();
-        let from = TilesFrom {
-            runner,
-            runner_name,
-            client: self.client_handle(),
-            redraw: cx.entity().downgrade().into(),
-        };
-        picture_grid(images, frames, height, width, &from, cx)
+        for (i, (image, frame)) in images.iter().zip(frames).enumerate() {
+            let path = image.path.clone();
+            // Its file's name, for VoiceOver and for scripts.
+            let label = SharedString::from(file_name(&path));
+            let tile_images = all.clone();
+            let tile = div()
+                .id(("image", i))
+                .absolute()
+                .left(px(frame.x))
+                .top(px(frame.y))
+                .w(px(frame.w))
+                .h(px(frame.h))
+                .rounded(px(8.))
+                .overflow_hidden();
+            let Some(runner) = remote.clone() else {
+                grid = grid.child(
+                    tile.cursor_pointer()
+                        .tip(crate::viewer::TILE_TIP)
+                        // The in-app viewer, not the file's default app: only a
+                        // real picture opens, and nothing is ever run (viewer.rs).
+                        .on_click(move |_, window, cx| {
+                            crate::viewer::open_from_tile(&tile_images, i, None, window, cx)
+                        })
+                        // Dragged, it goes out as the file itself (file_drag.rs).
+                        .file_drag(Some(path.clone()))
+                        .child(
+                            img(super::markdown::file_picture(&path))
+                                .w(px(frame.w))
+                                .h(px(frame.h))
+                                .rounded(px(8.))
+                                .object_fit(ObjectFit::Cover),
+                        )
+                        .test_support()
+                        .role(Role::Image)
+                        .aria_label(label),
+                );
+                continue;
+            };
+            let picture = crate::remote_pictures::picture(
+                &runner,
+                &path,
+                &self.client_handle(),
+                cx.entity().downgrade().into(),
+                cx,
+            );
+            let words = crate::remote_pictures::words(&picture, &runner_name);
+            let tile = match picture {
+                // In the viewer on a click, as this Mac's are, from the bytes
+                // that Mac sent (Mike, 18 Nov). No drag: it isn't a file here.
+                crate::remote_pictures::Picture::Ready(bytes) => {
+                    let runner = runner.clone();
+                    tile.cursor_pointer()
+                        .tip(crate::viewer::TILE_TIP)
+                        .on_click(move |_, window, cx| {
+                            crate::viewer::open_from_tile(
+                                &tile_images,
+                                i,
+                                Some(&runner),
+                                window,
+                                cx,
+                            )
+                        })
+                        .child(
+                            img(ImageSource::Render(bytes))
+                                .w(px(frame.w))
+                                .h(px(frame.h))
+                                .rounded(px(8.))
+                                .object_fit(ObjectFit::Cover),
+                        )
+                }
+                // Why it couldn't be got, on hover; a click asks again.
+                crate::remote_pictures::Picture::Failed(why) => {
+                    let me = cx.entity().downgrade();
+                    tile.cursor_pointer().tip(why).on_click(move |_, _, cx| {
+                        crate::remote_pictures::retry(&runner, &path, cx);
+                        me.update(cx, |_, cx| cx.notify()).ok();
+                    })
+                }
+                _ => tile,
+            };
+            let (fill, faint) = (
+                crate::style::code_background(cx),
+                crate::style::faint_text(cx),
+            );
+            grid = grid.child(
+                tile.when_some(words, |s, words| {
+                    s.bg(fill)
+                        .border(gpui_kit::px(0.5))
+                        .border_color(crate::style::card_border(cx))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .px(px(4.))
+                        .child(
+                            div()
+                                .min_w_0()
+                                .truncate()
+                                .text_size(px(crate::style::size::WORK - 1.))
+                                .text_color(faint)
+                                .child(words),
+                        )
+                })
+                .test_support()
+                .role(Role::Image)
+                .aria_label(label),
+            );
+        }
+        grid
     }
 
     /// A tool's pictures under its row: screenshots stay thumbnails, a

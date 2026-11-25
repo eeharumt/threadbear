@@ -47,11 +47,16 @@ working now, and one you've just sent a message to: while your message
 still has its spinner (a busy Mac can take a while to pick it up), the
 thread has already left the Inbox. If the message can't go, it comes back. A thread that
 asks you something keeps its place in the inbox, wake-up or not, and so does
-one that has left a job running while it waits for you: a small grey
+one that has left a job running while it waits for you (a preview server
+you need, a job watching for you to do the step): a small grey
 arc turning by its time says the job is still going, and hovering it says what it is. Sub-agents are
 different: while they're working the thread stays in Running, even if it has
 asked you something, as what they find can change what it asks. It comes to
 the inbox when they're done, and you can still open it and answer early.
+The same goes for a job the thread is itself waiting on, like a landing or a
+build: the agent is asked which kind its job is when it has a question for
+you with one still running, and if the job has to finish first, the thread
+stays in Running until it has.
 Hibernating and Archived, at the foot, hold the threads that are put away
 (see [Hibernate and archive](#hibernate-and-archive)). They start folded,
 showing only how many; click a heading to open or fold it. A thread whose agent
@@ -65,6 +70,13 @@ has the threads that have booked a message to themselves for later (an
 agent saying "I'll check again in 20 minutes") and have nothing for you
 until then. Each row says when it wakes, soonest first. When the time comes
 one of these runs again, and lands in the inbox when it's done.
+
+Your runner decides which of these a thread is in, so the Mac, the iPhone,
+Android and the website all sort it the same way, and so does another Mac
+looking at this one's threads. A thread still asking you something counts in
+the badge until you've done it, whether or not you've read it. One whose login
+has run out of usage stays in the inbox and counts too, as you may want to move
+it to another login; it carries on by itself when the limit resets.
 
 To keep a thread at the very top, star it: hover its row and press the star,
 or use its right-click or ... menu. Starred threads sit in a Starred section
@@ -154,6 +166,18 @@ to the step it's about: click
 it and the work opens there, with that step lit up. A link to another
 thread opens that thread.
 
+To find something said earlier, press ⌘F (Ctrl-F on Windows and Linux) in
+the new desktop app: a find bar comes up over the thread and counts the
+matches as you type. Return or ⌘G goes to the next one and Shift-Return or
+⇧⌘G to the one before, going round at either end; Escape or Done closes it.
+It finds words in the work too, so a match in a command's output or a
+thought opens that line, and the "Worked for" line it's folded into, and
+folds them again when you move on. Matches in a reply are marked in its
+words, and a bar beside the row says which one you're on. It searches the
+part of the thread that's loaded: going back past the first match loads
+the earlier part. With a file showing in the pane and clicked into, ⌘F
+finds in the file instead.
+
 An agent can draw a diagram or a small page in its reply: a ```` ```mermaid ````
 block shows as the diagram (drawn with [Pele](https://pele.run/), in
 Threadbear's colours, light or dark), and an ```` ```html ```` block as the
@@ -178,7 +202,9 @@ the `web-runtime` folder of Threadbear's data folder.
 The installed Mac runner checks the web runtime's CEF pin daily while a
 runtime is installed. Updates and
 `tb status` warn if it is two weeks behind stable, or the check has failed
-for three days. Bringing in a Threadbear update carries a newer pin when
+for three days, when an agent can update it. While it's only waiting on
+cef-rs, the Rust bindings Threadbear needs for the newer CEF, that's a quiet
+line in the Updates panel, with nothing flagged. Bringing in a Threadbear update carries a newer pin when
 one is available. Chromium's sandbox stays off so the runtime can be
 downloaded on first use; keep these updates current.
 
@@ -280,7 +306,7 @@ picture. Pick any options, None of these, or write a reply, then Send
 answer. Reference options are there to compare and can't be picked. The
 thread's Mac has to be on to load the review and take the answer, and it
 sends the stills only once you open the review, so they can take a moment
-to turn up. Pages and videos show their still; open the real thing on the
+to turn up. Pages, videos and sounds show their still; open the real thing on the
 Mac. Pictures pasted into an answer on the Mac stay with it, though the
 phone doesn't show them. This needs your backend on API 86 or newer. If
 the review changes on the Mac while you're answering, your answer stays
@@ -301,10 +327,11 @@ side, with the agent's lead under them. Click a tab or one of the strip's
 small pictures to go straight to it, the first tab to see them all, and
 Open live at the end of the tabs to try one the agent has running (a web
 page only). A review from a thread on another Mac opens on that Mac. An
-agent can show a video or an HTML page in place of a picture: videos play
+agent can show a video, a sound or an HTML page in place of a picture: videos play
 quietly on a loop, side by side when they're all showing, with controls
-for sound when one is big; a page shows as it does in the side pane, with
-its scripts off. When
+for sound when one is big; a sound (MP3, M4A, AAC or WAV, say music beds to
+compare) shows its waveform, with a play bar under it when it's big; a page
+shows as it does in the side pane, with its scripts off. When
 the agent includes today's version to compare against, hold Space (or click
 its button at the end of the tabs) to flick to it and back. To look closer at a
 picture, scroll or pinch over it to zoom in where the pointer is (a long page
@@ -325,7 +352,7 @@ the page's address. On a Mac a local PDF shows its first page and a video
 its first frame. A PDF over 16 MB or a file that can't be previewed keeps
 its file symbol. Click it to open it (the middle mouse button works
 too). A file the side pane can draw opens there: Markdown, text, a page, a
-picture, a PDF, data and logs (JSON, YAML, TOML, CSV, `.log`) and code
+picture, a PDF, a video or sound file on a Mac, data and logs (JSON, YAML, TOML, CSV, `.log`) and code
 (TypeScript, Python, Rust, shell scripts and the rest), data and code
 coloured. Anything else opens in its own app, and ⌘-click opens any file
 there. A path with lines after it, in a link or in a reply's code
@@ -404,7 +431,8 @@ you click. It works for folders on your other Macs too, though only this
 Mac's files have thumbnails and Quick Look.
 
 On a Mac, Office and iWork documents in the pane show a read-only Quick Look
-thumbnail. Videos have playback controls and PDFs can be read and scrolled.
+thumbnail. Videos and sound files (WAV, MP3, M4A, AIFF, CAF, FLAC, AAC) have
+playback controls, and PDFs can be read and scrolled.
 The thumbnail cannot follow links or run document actions. Open the document
 in its own app to work on it. Files from another Mac stay on that machine.
 Documents over 256 MB can be opened in their own app instead.
@@ -602,6 +630,12 @@ New threads start in the `ThreadbearThreads` folder in your home folder
 one thread from the composer's + menu, or change the default in Settings
 (⌘,).
 
+The agent starts while you write that first message, so its first reply
+comes about half a second sooner. If you change the folder, login, model,
+effort or mode before sending, it starts again to match, and if you don't send
+within ten minutes it stops. This is for Claude threads in a folder as it is;
+one that gets a worktree, or a thread started in a project, starts when you send.
+
 A safe first message is one that only reads, such as "What's in this
 folder?" or "Explain what you can do for me here." When you're ready for it
 to make something, try "Make a file called hello.txt that says hi" and watch
@@ -610,7 +644,7 @@ it appear in `~/ThreadbearThreads`.
 Return sends and Shift-Return (or Option-Return) adds a new line. In a list, Shift-Return
 starts the next item ("2. " after "1. milk", "- " after "- milk"), and
 Shift-Return on an empty item ends the list. You can paste or drop images
-into the composer, or add them with +. Each one goes in where the cursor
+into the composer, or add them with + (⇧⌘A in the new desktop app). Each one goes in where the cursor
 is as a small chip, "Picture 1", "Picture 2", with
 its thumbnail, which drops into a strip over your words as the box opens
 for it, and the agent gets each picture right there in your words.
@@ -655,6 +689,14 @@ thread, and it goes in as a chip with that thread's title. Dragging a row
 left still archives it; any other way drags the thread. The agent gets a `thread:<id>` link it can
 read the thread from, and clicking the chip once it's sent opens that
 thread. An id that isn't one of your threads pastes as plain text.
+
+Or type `#` at the start of a word and a list of your other threads opens
+above the message box, the latest first. What you type after the `#`
+narrows it by title or folder, or by the start of a thread's id, and
+archived threads show once you've typed something, after the rest. Up and
+Down move, Return, Tab or a click puts the thread in as its chip, and Esc
+closes the list. A `#` that matches no thread (`issue #12`, a Markdown
+heading) leaves it shut.
 
 When an agent's reply links another of your threads (one it started, say, or
 one it's waiting on), a small copy of that thread's tile sits just before the
@@ -794,6 +836,14 @@ sees you talking about it in another thread, it wakes this one and says
 where. Give it a limit as well ("or Saturday at the latest") and, if you
 haven't brought it up by then, it comes back saying so.
 
+Whenever a thread is hibernated, woken, archived or brought back, a grey
+line in it says who did it (you, an agent or Threadbear), when, and why
+if there's more to say: "Hibernated by you on Tue 24 Nov, 3:32 pm, until
+Wed 25 Nov, 9:00 am." A thread that's done with a check-in booked moves
+under Hibernating by itself, with no snooze, and its line says so and
+names the check-in; it goes back to the Inbox, saying so, if the check-in
+is deleted or paused. These lines are on the Mac only.
+
 When a thread is done, archive it: press ⌘E, hover its row and press the
 box, or swipe the row left with two fingers on the trackpad (right with
 natural scrolling off), or drag it left with the mouse, and let go once the
@@ -815,7 +865,9 @@ them, most recently archived first, with the older ones behind Show more
 there, puts one back.
 To get rid of one for good, hover it there and click the trash, or
 right-click it and choose Delete…; after you confirm, it goes to the
-runner's trash folder, with no Undo in the app.
+runner's trash folder, with no Undo in the app. Another Mac's thread can
+only be deleted on that Mac, so there the trash is greyed out and its tip
+names the Mac.
 
 A thread another thread's agent started archives itself when it finishes
 with nothing left for you: nothing asked, no follow-ups suggested, nothing
@@ -834,11 +886,11 @@ didn't need to read the reply, with a note in the thread giving its reason.
 Not one with follow-ups, anything left open or a design review waiting for
 you, one you've starred, one you
 had open as it finished, or one you've brought back out of the archive
-before. To check what it hid, the foot of the Inbox says "Quietly archived:
-6 today" on days it has archived any. Click it to see them, newest first:
-click one to open it, or press "Should have shown me" (also in an archived
-thread's right-click menu) to bring it straight back to your inbox and
-tell the model it got that one wrong.
+before. To check what it hid, a daily thread lists the ones it archived
+the day before, each with the model's reason: tell it which you should have
+seen, and it brings them back and writes the misses down. Or right-click an
+archived thread and pick Should Have Shown Me, which brings it straight
+back to your inbox and tells the model it got that one wrong.
 
 Back and Forward (⌘[ and ⌘], in the Go menu, or the ‹ and › beside the share
 icon at the top right of a thread) step through the threads and
@@ -964,6 +1016,9 @@ Collapse or Expand Threads (⌘/), which folds the list away while the bar
 of icons on the left stays, gives its room to the thread, and brings it
 back at the same width (clicking Threads, Scheduled, Projects or
 Librarian in that bar brings it back too),
+Show or Hide Sidebar Panels (⇧⌘B, the new desktop app only), which closes
+whichever of Runners, Connectors, Updates, Usage or Setup are open and
+keeps the list, then brings the same ones back,
 Show or Hide Panels (⌥⌘P) for the panels beside the thread, Show or Hide
 Terminal (⌘J), and Reset Panel Layout, which puts everything back how it
 started. Threadbear remembers your layout between launches.
@@ -971,7 +1026,7 @@ started. Threadbear remembers your layout between launches.
 ### Terminal
 <!-- slug: terminal -->
 
-⌘J opens a terminal under the thread, and ⌘J again hides it. It's a real
+⌘J (or ⌘`) opens a terminal under the thread, and the same key again hides it. It's a real
 one, with your login shell, its colours and full-screen programs like vim
 or htop, and it takes the keyboard as it opens. Each thread has a shell
 of its own, started in the thread's folder (its worktree, when it has
@@ -1479,7 +1534,9 @@ CLAUDE_CONFIG_DIR=~/Library/Application\ Support/Threadbear/accounts/claude-1 cl
 ```
 
 then type `/login` (for Codex, `CODEX_HOME=<the folder> codex login`). It
-shows up in the account menu within a few seconds.
+shows up in the account menu within a few seconds. A Codex login's threads
+get the same instructions, hooks, skills and settings as `~/.codex`: the
+runner links them in before its first thread starts.
 
 To drop a login you no longer use, such as one whose plan has lapsed, add
 its id to `hiddenLogins` in `runner.json` (`"hiddenLogins": ["claude-main"]`)
@@ -1589,8 +1646,16 @@ take the folder out of Grok's trusted folders (`/hooks-untrust`) to use Ask
 or Auto. Denying a card ends Grok's turn, as it does in Grok's own app. Grok's models each list their effort levels (low to extra
 high), and the effort you pick is the one it runs at. Small jobs (titles
 and summaries) stay on Claude unless you pick a pool of only OpenCode or
-Grok logins for them in Settings. There are no usage readings, sandbox or
-going back to an earlier message for these yet, and Threadbear only updates
+Grok logins for them in Settings. Grok logins show their plan's room in
+Usage, read from Grok itself (its weekly share and when it resets, a minute
+after the runner starts and after Grok turns). When a Grok login runs out
+of balance, the thread says so in plain words ("grok-main is out of Grok
+usage...") and is treated like a Claude login at its limit: the login
+counts as out until its week resets or a recheck finds room again (every
+10 minutes, so a top-up is seen), and a pool thread moves to another login
+with room in its own pool, or waits for room. OpenCode and Cursor have no
+usage readings. None of these have a sandbox or
+going back to an earlier message yet, and Threadbear only updates
 their CLIs when you press Update in the Updates panel.
 
 Titles, the librarian and Wake when… run on a Claude login, so with only
@@ -1679,9 +1744,16 @@ says little; with no week before to go by, the line just says when it
 resets. A sign-in that's ending or has ended shows under its row even when it's
 shut.
 
+A Gemini login on a Google AI plan shows the plan's 5-hour and weekly
+windows for the Gemini models, which Threadbear reads from Gemini's own
+`/usage` every 10 minutes and after each Gemini turn (it costs nothing), with
+the plan's Claude and GPT models' week as a meter of its own that never makes
+the login look full.
+
 A login with no number yet says why on its row, with a dashed ring: a
-Claude or Codex login that hasn't run a turn here yet; Grok, which shows
-its plan's limit only through its own background service; or OpenCode,
+Claude or Codex login that hasn't run a turn here yet; a Grok login
+Threadbear hasn't read yet (it reads one a minute after it starts); Gemini,
+before its first reading; or OpenCode,
 whose own models spend a balance rather than a weekly limit.
 
 A Claude login with a limit of its own on Fable shows that week too,
@@ -1847,10 +1919,13 @@ key:
 - Hibernate (opens Pick a time): `hibernate`, no key
 - Stop: `stop`, ⌘.
 - Copy Transcript as Markdown: `copyTranscript`, ⇧⌘C
+- Attach Images or Markdown (the new desktop app only): `attachFiles`, ⇧⌘A, opens the message box's + > Attach images or Markdown… picker
+- Find in Thread (the new desktop app only): `findInThread`, ⌘F, in the Edit menu; ⌘G and ⇧⌘G then go to the next and previous match
 - Back: `back`, ⌘[
 - Forward: `forward`, ⌘]
 - Next Inbox Thread: `nextInboxThread`, ⌥⌘↓
-- Open Anything (the new desktop app only): `openAnything`, ⌘K, and `openAnythingAlso`, ⌘P
+- Open Anything (the new desktop app only): `openAnything`, ⌘K, `openAnythingAlso`, ⌘P, and `openAnythingPalette`, ⇧⌘P
+- Go to Message Box (the new desktop app only): `focusMessageBox`, ⌘L, puts the cursor in the open thread's message box
 - Show Inbox: `showInbox`, ⌘1
 - Show Scheduled: `showScheduled`, ⌘2
 - Show Projects: `showProjects`, ⌘3
@@ -1862,10 +1937,11 @@ key:
 - Zoom In: `zoomIn`, ⌘=
 - Zoom Out: `zoomOut`, ⌘-
 - Actual Size: `actualSize`, ⌘0
-- Show Threads: `toggleThreads`, ⌃⌘S
+- Show Threads: `toggleThreads`, ⌃⌘S, and `toggleThreadsAlso`, ⌘B (the new desktop app only)
 - Collapse Threads: `collapseThreads`, ⌘/
+- Show Sidebar Panels (the new desktop app only): `toggleSidebarPanels`, ⇧⌘B, closes Runners, Connectors, Updates, Usage and Setup and keeps the Threads list
 - Show Panels: `togglePanels`, ⌥⌘P
-- Show Terminal: `toggleTerminal`, ⌘J
+- Show Terminal: `toggleTerminal`, ⌘J, and `toggleTerminalAlso`, ⌘` (the new desktop app only; it takes ⌘` from macOS's switching between Threadbear's own windows)
 - Reset Panel Layout: `resetPanelLayout`, no key
 
 In the file, a key is its modifiers and then the key, joined with `+`: `cmd`,
@@ -2585,9 +2661,9 @@ to the new Threadbear app", in your checkout, and the window closes once it's
 made. The card then shows that thread, what it's doing and Open the thread.
 The thread builds the new app on your Mac from your checkout's `main` with
 `desktop/scripts/switch-from-swift.sh`, at background priority, which takes
-20 to 40 minutes the first time and installs Rust first if there's no
-`rustup` (docs/on-your-mac.md says what that puts where). It needs about 5 GB
-free with Rust to install, 4 without, and says so before it starts if
+20 to 40 minutes the first time and fetches the exact Rust the repo pins
+the first time it builds (docs/on-your-mac.md says what that puts where).
+It needs about 5 GB free the first time, 4 after, and says so before it starts if
 there isn't that much. If something stops
 it (Xcode's command line tools, Rust, disk space, a build error) the thread
 works out why and fixes it, or asks you. When the app's installed it asks

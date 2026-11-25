@@ -217,6 +217,10 @@ the data dir (`<home>`, normally `~/Library/Application Support/Threadbear`):
   `.fixtures/threads/<id>` at the repo's top (private and gitignored), so a rendering bug
   in one of Mike's threads can be reproduced against the mock runner.
 - `tb rpc <method> [json]`: a raw call, printing the result.
+- `tb red-watch [--quiet]`: in a checkout, starts one thread to fix each
+  workflow marked `# tb land: hold while red` that's red on main, and
+  tells it when it fails again or passes (docs/thread-worktrees.md, "Red
+  on GitHub"). A schedule's check runs it every 10 minutes on Mike's Mac.
 - `tb activity` (and `--summary`): what Mike has clicked, opened, chosen and
   sent in the app lately, or what he uses most, while he has the activity log
   on (Settings > General; off by default, so other people's copies never
@@ -244,7 +248,10 @@ rest, and `tb <command> --help` explains one.
   the runner applies to a `threads.create` with no model), from `tb` or a
   debug app's composer alike. Run it in the background and use the
   `<dev home>/tb` it prints: a bare `tb` reaches the live runner unless
-  `THREADBEAR_HOME` is set in that same command.
+  `THREADBEAR_HOME` is set in that same command. Only the thread that
+  started it (and what that thread runs), a terminal and the app can use it:
+  another thread's tb is turned away with 4403 (Daybreak finding 177,
+  docs/protocol/connection.md "Who's really calling"), so start your own.
 - Leave `--home` out, or keep it and any extra work folders under `$TMPDIR`:
   Agent Archive skips transcripts from there, but not from `/tmp`, so a
   try-out thread in `/tmp` ends up in Mike's archive.
@@ -318,7 +325,22 @@ rest, and `tb <command> --help` explains one.
   browser (6 Nov); a hook blocks `npm test` and `check.sh --local` there. It
   copies the checkout over, runs it, brings back failed steps' logs and
   deletes the copy (`scripts/check-remote.sh`); one run at a time, so it may
-  say it's waiting for another thread's. A host short of disk is passed over
+  say it's waiting for another thread's. A landing's check (tb land sets
+  `THREADBEAR_CHECK_FIRST`) goes ahead of everything else waiting on its
+  host: other checks, GPUI builds,
+  measurements and Tinker Desk's `heavy` jobs say they're letting it go
+  first (`scripts/host-turn.sh` says how). It still waits for what's
+  running; it doesn't get a slot of its own. A landing's check that needs a
+  Mac is split when a Linux host and a Mac both answer: the steps a Linux
+  host can run (`LINUX_STEPS` in check-remote.sh, `check.sh --part linux`)
+  go to the cloud box and the rest (`--part mac`: the Swift ones) to Tinker
+  Desk, at the same time, and it passes only if both halves do. The Mac half
+  also checks the desktop app's macOS build (`desktop macos check`), which
+  the Linux host can't compile. Its output
+  shows each half's lines marked `[no Mac]` and `[Mac]` as they come, then
+  the two merged as one check, `Checking on cloud+tinker-desk`. With only
+  one kind of host answering it runs whole as before; a Linux half no Linux
+  host could take runs on the Mac too. A host short of disk is passed over
   (8 GiB free for Swift or desktop/'s Rust, 2 otherwise), and if none has
   room the check fails and names them. A check that fails on a host that ran
   under 1 GiB free during it is run again on another host (or the same one,

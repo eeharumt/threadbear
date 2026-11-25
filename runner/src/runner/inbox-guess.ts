@@ -263,7 +263,7 @@ export const inboxGuessPart = {
     if (this.childEnds(st).length) return;
     const why = strong.why.replace(/\s+/g, ' ').trim();
     this.emit(st, { type: 'system.note', text: `${QUIET_ARCHIVED_NOTE} ${why}` });
-    this.update({ threadId: rec.id, archived: true, archivedBy: 'threadbear' });
+    this.update({ threadId: rec.id, archived: true, archivedBy: 'threadbear', noted: true });
     // After the archive, which clears any older mark (parkRecord).
     rec.quietlyArchived = { at: this.isoNow(), why, seq };
     this.markDirty(st);

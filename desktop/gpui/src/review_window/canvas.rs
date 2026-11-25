@@ -11,7 +11,7 @@
 // as chips "so we can kind of annotate and speak to give feedback".
 use super::ReviewWindow;
 use crate::style::{self, px};
-use gpui_kit::component::{h_flex, ActiveTheme as _};
+use gpui_kit::component::{h_flex, ActiveTheme as _, Sizable as _};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use std::cell::Cell;
@@ -101,6 +101,13 @@ pub(crate) struct CanvasState {
     /// Where to start when it was opened on an option's picture (a click on
     /// one on the thread's card), before the board was laid out.
     want: Option<(usize, usize)>,
+    /// The clip or page playing where it sits on the board (option, shot):
+    /// one at a time, with its sound and controls (Mike, 24 Nov 2026: a
+    /// double-click took him off the board to hear a music bed).
+    pub(crate) playing: Option<(usize, usize)>,
+    /// A sound's bar starts paused (the pane's): set by Play, so the first
+    /// frame with it up presses its play.
+    start_sound: bool,
 }
 
 impl CanvasState {
@@ -120,6 +127,8 @@ impl CanvasState {
             bounds: Rc::new(Cell::new(None)),
             placed: None,
             want: None,
+            playing: None,
+            start_sound: false,
         }
     }
 
@@ -478,13 +487,6 @@ impl Scene {
         let cam = &self.cam;
         let on = self.lit.is_none_or(|l| l.shows(index, shot_laid.shot));
         if self.visible(&shot_laid.extent()) {
-            let badge = if shot.video().is_some() {
-                Some("Plays: double-click")
-            } else if shot.page().is_some() {
-                Some("A page: double-click")
-            } else {
-                None
-            };
             if picked {
                 let ring = 6.;
                 let p = &shot_laid.picture;
@@ -515,21 +517,6 @@ impl Scene {
                             .size_full()
                             .object_fit(ObjectFit::Fill),
                     )
-                    .when_some(badge, |d, text| {
-                        d.child(
-                            div()
-                                .absolute()
-                                .top(px(8.))
-                                .right(px(8.))
-                                .px(px(8.))
-                                .py(px(2.))
-                                .rounded(px(6.))
-                                .bg(hsla(0., 0., 0., 0.65))
-                                .text_color(white())
-                                .text_size(px(12.))
-                                .child(text),
-                        )
-                    })
                     .into_any_element(),
             );
             // Over the picture; laid out only for later pages and a first
@@ -742,6 +729,7 @@ impl ReviewWindow {
         let (badges, more) = scene.my_marks(&laid, &review, &draft_marks, drawing.as_ref());
         pens.extend(more);
         layer = layer.children(badges);
+        layer = layer.children(self.canvas_player(&scene, &laid, window, cx));
         let Some(cv) = self.canvas.as_ref() else {
             return div().into_any_element();
         };
@@ -941,6 +929,9 @@ impl ReviewWindow {
                     scene.shot(index, shot_laid, shot, shots.len(), picked);
                 parts.extend(more_parts);
                 pens.extend(more_pens);
+                if shot.media.is_some() && scene.visible(&shot_laid.picture) {
+                    parts.push(self.play_button(scene, index, shot_laid, option, shot, cx));
+                }
             }
         }
         (parts, pens)
@@ -991,7 +982,7 @@ impl ReviewWindow {
                         } else {
                             Toggled::False
                         })
-                        .child(super::band::checkbox(is_picked, style::accent(cx), cx))
+                        .child(super::parts::checkbox(is_picked, style::accent(cx), cx))
                         .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
                             if this.session.pick(&pick_id) {
                                 this.edited(cx);
@@ -1002,7 +993,7 @@ impl ReviewWindow {
                 )
             })
             .child(option.label())
-            .when(starred, |d| d.child(super::band::recommended_mark(cx)))
+            .when(starred, |d| d.child(super::parts::recommended_mark(cx)))
             .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
                 if let Some(i) = this
                     .session
@@ -1359,6 +1350,21 @@ impl ReviewWindow {
             "peek": c.stops.get(c.stop).and_then(|s| s.peek),
             "agentMarks": notes,
             "tool": c.tool.name(),
+            // What plays where it sits on the board: "clip" in the system's
+            // player, "sound" on its play bar ("sound paused" before it
+            // starts), "page" in place, "waiting" for
+            // any of them, or nothing.
+            "playing": self.canvas_playing_shot().map(|shot| {
+                if shot.video().is_some_and(|v| crate::media_view::state_of(&canvas_key(v)).is_some()) {
+                    "clip"
+                } else if let Some(sound) = shot.audio().and_then(|a| crate::media_view::state_of(&canvas_key(a))) {
+                    if sound.playing { "sound" } else { "sound paused" }
+                } else if shot.page().is_some_and(|p| self.stage.page.as_ref().is_some_and(|(shown, _)| shown == p)) {
+                    "page"
+                } else {
+                    "waiting"
+                }
+            }),
             "marks": self.session.draft().marks.iter().map(|m| format!("{} {} {} {}", m.n, m.kind.name(), m.option_id, m.shot)).collect::<Vec<_>>(),
         })
     }
@@ -1536,7 +1542,7 @@ impl ReviewWindow {
     }
 
     /// A double-click: fly to the picture under it, or its frame, or out to
-    /// everything. A clip or a page opens on the stage, where it plays.
+    /// everything. A clip or a page plays where it is, flown to.
     fn canvas_look_closer(&mut self, at: (f32, f32), cx: &mut Context<Self>) {
         let Some(c) = self.canvas.as_mut() else {
             return;
@@ -1550,15 +1556,13 @@ impl ReviewWindow {
                 .options
                 .get(option)
                 .map(|o| o.shot(index))
-                .is_some_and(|s| s.video().is_some() || s.page().is_some());
-            if moving {
-                self.canvas_closer = Some((option, index));
-                self.session.enlarge(option, index);
-                cx.notify();
-                return;
-            }
+                .is_some_and(|s| s.media.is_some());
             c.roaming = true;
             c.fly_to(rect, board::STOP_ZOOM);
+            if moving {
+                self.canvas_play((option, index), cx);
+                return;
+            }
         } else if let Some(o) = laid.options.iter().find(|o| o.frame.contains(at)) {
             let rect = o.extent();
             c.roaming = true;
@@ -1614,6 +1618,8 @@ impl ReviewWindow {
     fn cut_out_mark(&mut self, n: u32, path: String, part: [f64; 4], cx: &mut Context<Self>) {
         let client = self.client.clone();
         cx.spawn(async move |this, cx| {
+            let turn = cx.update(crate::fit_picture::decode_now_turn);
+            let _turn = turn.await;
             let made = cx
                 .background_executor()
                 .spawn(async move { cut_out(&path, part) })
@@ -1646,22 +1652,39 @@ impl ReviewWindow {
 /// A PNG of part of a picture (fractions of it), at most 480 wide, in the
 /// temporary folder; None when the picture isn't on this Mac or won't read.
 fn cut_out(path: &str, part: [f64; 4]) -> Option<std::path::PathBuf> {
-    let picture = image::open(path).ok()?;
-    let (w, h) = (f64::from(picture.width()), f64::from(picture.height()));
-    let x = (part[0] * w).floor() as u32;
-    let y = (part[1] * h).floor() as u32;
-    let cw = (((part[2] - part[0]) * w).ceil() as u32).max(1);
-    let ch = (((part[3] - part[1]) * h).ceil() as u32).max(1);
-    let piece = picture.crop_imm(x, y, cw, ch);
-    let piece = if piece.width() > 480 {
-        piece.resize(
-            480,
-            480 * piece.height() / piece.width().max(1),
-            image::imageops::FilterType::Triangle,
-        )
-    } else {
-        piece
-    };
+    // Read under the path guard and decoded within the picture budget's
+    // limits (fit_picture.rs); the part is the same fraction of it shrunk.
+    let piece = (0..3).find_map(|_| {
+        let read = || crate::rows::markdown::checked_picture_bytes(std::path::Path::new(path)).ok();
+        match crate::fit_picture::decode_now(
+            read,
+            |size| cut_plan(size, part),
+            |picture| {
+                let picture = image::DynamicImage::ImageRgba8(picture);
+                let (w, h) = (f64::from(picture.width()), f64::from(picture.height()));
+                let x = (part[0] * w).floor() as u32;
+                let y = (part[1] * h).floor() as u32;
+                let cw = (((part[2] - part[0]) * w).ceil() as u32).max(1);
+                let ch = (((part[3] - part[1]) * h).ceil() as u32).max(1);
+                let piece = picture.crop_imm(x, y, cw, ch);
+                let piece = if piece.width() > 480 {
+                    piece.resize(
+                        480,
+                        480 * piece.height() / piece.width().max(1),
+                        image::imageops::FilterType::Triangle,
+                    )
+                } else {
+                    piece
+                };
+                Some(piece)
+            },
+        ) {
+            Ok(piece) => Some(Some(piece)),
+            Err(crate::fit_picture::Missed::Failed) => Some(None),
+            // No room yet (the picture on screen holds some): a while longer.
+            Err(crate::fit_picture::Missed::Busy) => None,
+        }
+    })??;
     let file = std::env::temp_dir().join(format!(
         "threadbear-mark-{}-{}.png",
         std::process::id(),
@@ -1671,6 +1694,36 @@ fn cut_out(path: &str, part: [f64; 4]) -> Option<std::path::PathBuf> {
     ));
     piece.save(&file).ok()?;
     Some(file)
+}
+
+/// What `cut_out` decodes a `size` picture to: only as big as a 480-wide
+/// piece of `part` needs, rather than all 32 million pixels a picture may
+/// keep, and room for the piece cut and shrunk from it. An 8,192-square
+/// picture on screen, with room asked for two whole copies besides, never
+/// fitted the budget, so its cut-out never came (Daybreak 170, round 4).
+fn cut_plan((w, h): (u32, u32), part: [f64; 4]) -> crate::fit_picture::Plan {
+    // The size is the file's; a photo turned by its EXIF is shown (and cut)
+    // the other way round, so plan for whichever asks more.
+    let (a, b) = (cut_plan_as((w, h), part), cut_plan_as((h, w), part));
+    crate::fit_picture::Plan {
+        shown_pixels: a.shown_pixels.max(b.shown_pixels),
+        made_bytes: a.made_bytes.max(b.made_bytes),
+    }
+}
+
+fn cut_plan_as((w, h): (u32, u32), part: [f64; 4]) -> crate::fit_picture::Plan {
+    let (w, h) = (f64::from(w.max(1)), f64::from(h.max(1)));
+    let across = (part[2] - part[0]).clamp(1. / w, 1.);
+    let down = (part[3] - part[1]).clamp(1. / h, 1.);
+    // Decoded at the scale that makes the piece 480 wide, never bigger.
+    let scale = (480. / (across * w)).min(1.);
+    let (kw, kh) = ((w * scale).ceil(), (h * scale).ceil());
+    let piece = ((across * kw).ceil() + 1.) * ((down * kh).ceil() + 1.);
+    crate::fit_picture::Plan {
+        shown_pixels: (kw * kh) as u64,
+        // The piece, and its shrunk copy, no bigger.
+        made_bytes: (piece * 4. * 2.) as u64 + (1 << 20),
+    }
 }
 
 /// The agent's words without their markdown marks: on the board they're
@@ -1686,4 +1739,332 @@ fn stop_of(stops: &[Stop], option: usize, shot: usize) -> Option<usize> {
         Lit::Shot(o, n) => o == option && n == shot,
         _ => false,
     })
+}
+
+/// How far under the canvas's top a playing clip or page may sit: the
+/// tools' row is GPUI's, and a native view would cover it.
+const PLAY_TOP: f32 = 52.;
+/// Smaller than this on screen, a clip or page shows its still: its
+/// controls wouldn't fit.
+const PLAY_SMALLEST: f32 = 160.;
+
+/// The board's player for a clip (media_view.rs), one per window.
+pub(super) fn canvas_key(path: &str) -> String {
+    format!("review canvas {path}")
+}
+
+impl ReviewWindow {
+    /// A clip's or a page's button on its picture: Play (or Show the page),
+    /// or, while it's playing, Stop just over its top right corner (under
+    /// it, with the tools' row in the way), as the player covers the picture.
+    fn play_button(
+        &self,
+        scene: &Scene,
+        index: usize,
+        shot_laid: &board::BoardShot,
+        option: &threadbear_core::reducer::ReviewOption,
+        shot: &threadbear_core::reducer::ReviewShot,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let s = scene.cam.rect(&shot_laid.picture);
+        if s.w < 90. {
+            return div().into_any_element();
+        }
+        let at = (index, shot_laid.shot);
+        let playing = self.canvas.as_ref().and_then(|c| c.playing) == Some(at);
+        let page = shot.page().is_some();
+        let name = threadbear_core::review::shot_tip(option, shot_laid.shot);
+        let (icon, words, tip) = match (playing, page) {
+            (false, false) if shot.audio().is_some() => (
+                gpui_kit::assets::IconName::Music,
+                "Play",
+                format!("Play {name} here"),
+            ),
+            (false, false) => (
+                gpui_kit::assets::IconName::Play,
+                "Play",
+                format!("Play {name} here"),
+            ),
+            (false, true) => (
+                gpui_kit::assets::IconName::Globe,
+                "Show page",
+                format!("Show {name}'s page here"),
+            ),
+            (true, false) => (
+                gpui_kit::assets::IconName::Square,
+                "Stop",
+                format!("Stop {name}"),
+            ),
+            (true, true) => (
+                gpui_kit::assets::IconName::Close,
+                "Close page",
+                format!("Close {name}'s page"),
+            ),
+        };
+        // Clear of the tools' row, which is drawn over the board and takes
+        // a click aimed at a button under it: Stop goes under the picture
+        // when there's no room over it (a sound's Stop sat under the row and
+        // never stopped it, 24 Nov 2026).
+        let (right, top) = if !playing {
+            (
+                s.x + s.w - 8.,
+                (s.y + 8.).max(PLAY_TOP.min(s.y + s.h - 34.)),
+            )
+        } else if s.y - 34. >= PLAY_TOP || s.y + s.h + 34. > scene.view.1 {
+            (s.x + s.w, s.y - 34.)
+        } else {
+            (s.x + s.w, s.y + s.h + 8.)
+        };
+        crate::highlights::tipped(
+            h_flex()
+                .id(SharedString::from(format!("canvas-play-{}-{}", at.0, at.1)))
+                .absolute()
+                .right(gpui_kit::px(scene.view.0 - right))
+                .top(gpui_kit::px(top))
+                .h(px(26.))
+                .px(px(10.))
+                .gap(px(6.))
+                .items_center()
+                .rounded(px(13.))
+                .bg(hsla(0., 0., 0., 0.72))
+                .hover(|d| d.bg(hsla(0., 0., 0., 0.88)))
+                .text_color(white())
+                .text_size(px(12.))
+                .font_weight(FontWeight::SEMIBOLD)
+                .cursor_pointer()
+                .child(
+                    gpui_kit::component::Icon::new(icon)
+                        .with_size(px(12.))
+                        .text_color(white()),
+                )
+                .child(words),
+            tip,
+        )
+        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+        .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+            cx.stop_propagation();
+            if playing {
+                this.canvas_stop_playing(cx);
+            } else {
+                this.canvas_play(at, cx);
+            }
+        }))
+        .into_any_element()
+    }
+
+    /// Plays the clip or shows the page of `at` where it sits on the board.
+    pub(super) fn canvas_play(&mut self, at: (usize, usize), cx: &mut Context<Self>) {
+        self.canvas_stop_playing(cx);
+        // Where this window can't play a clip or a sound (Windows, Linux),
+        // it opens in the app this computer plays it in, as the stage's
+        // button does.
+        let away = self
+            .session
+            .review()
+            .options
+            .get(at.0)
+            .map(|o| o.shot(at.1))
+            .and_then(|s| s.video().or(s.audio()).map(str::to_owned))
+            .filter(|_| !crate::media_view::SHOWN_HERE);
+        if let Some(video) = away {
+            crate::open_gate::open_file(&video, threadbear_core::open_policy::Origin::ThisMac, cx);
+            return;
+        }
+        if let Some(c) = self.canvas.as_mut() {
+            c.playing = Some(at);
+            c.start_sound = true;
+            if c.tool != Tool::Move {
+                c.tool = Tool::Move;
+                c.drawing = None;
+            }
+        }
+        cx.notify();
+    }
+
+    pub(super) fn canvas_stop_playing(&mut self, cx: &mut Context<Self>) {
+        if let Some(c) = self.canvas.as_mut() {
+            if c.playing.take().is_some() {
+                // The board's page goes with it (the stage's is dropped in
+                // render when its shot isn't on show).
+                self.stage.page = None;
+            }
+        }
+        cx.notify();
+    }
+
+    /// The shot playing on the board, while it's in sight.
+    pub(super) fn canvas_playing_shot(&self) -> Option<threadbear_core::reducer::ReviewShot> {
+        let (option, shot) = self.canvas.as_ref()?.playing?;
+        let o = self.session.review().options.get(option)?;
+        (shot < o.shot_count()).then(|| o.shot(shot))
+    }
+
+    /// The clip or page playing on the board, over its picture: there while
+    /// the picture's wholly in the canvas and big enough for its controls,
+    /// hidden (still playing, so a music bed goes on as you move round) while
+    /// it's partly out, and stopped once it's out of sight.
+    fn canvas_player(
+        &mut self,
+        scene: &Scene,
+        laid: &Board,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
+        let (option, index) = self.canvas.as_ref()?.playing?;
+        let rect = laid
+            .options
+            .iter()
+            .find(|o| o.index == option)?
+            .shots
+            .iter()
+            .find(|s| s.shot == index)?
+            .picture;
+        let Some(shot) = self.canvas_playing_shot() else {
+            self.canvas.as_mut()?.playing = None;
+            return None;
+        };
+        let editable = self.canvas.as_ref().is_some_and(|c| c.tool == Tool::Move);
+        if !scene.visible(&rect) || !editable {
+            self.canvas.as_mut()?.playing = None;
+            self.stage.page = None;
+            return None;
+        }
+        let s = scene.cam.rect(&rect);
+        let (vw, vh) = scene.view;
+        let whole = s.x >= 0.
+            && s.y >= PLAY_TOP
+            && s.x + s.w <= vw
+            && s.y + s.h <= vh
+            && s.w >= PLAY_SMALLEST
+            && s.h >= PLAY_SMALLEST * 0.4;
+        let spot = div()
+            .absolute()
+            .left(gpui_kit::px(s.x))
+            .top(gpui_kit::px(s.y));
+        let spot = if whole {
+            spot.w(gpui_kit::px(s.w)).h(gpui_kit::px(s.h))
+        } else {
+            // A slot drawn with no size is hidden, not gone (media_view's sweep).
+            spot.size_0()
+        };
+        if let Some(page) = shot.page() {
+            if !whole {
+                if let Some((_, view)) = &self.stage.page {
+                    view.set_hidden(true);
+                }
+                return None;
+            }
+            if let Some(view) = self.stage_page(page, window, cx) {
+                return Some(spot.child(view).into_any_element());
+            }
+            // Couldn't show here: in the browser, once, as the stage's
+            // Open the page does.
+            if self
+                .stage
+                .page_failed
+                .as_ref()
+                .is_some_and(|(p, _)| p == page)
+            {
+                let page = page.to_owned();
+                self.canvas.as_mut()?.playing = None;
+                crate::open_gate::open_file(
+                    &page,
+                    threadbear_core::open_policy::Origin::ThisMac,
+                    cx,
+                );
+                return None;
+            }
+            // The web runtime's still starting.
+            return Some(
+                spot.flex()
+                    .items_center()
+                    .justify_center()
+                    .bg(hsla(0., 0., 0., 0.45))
+                    .text_color(white())
+                    .text_size(px(13.))
+                    .child("Opening the page\u{2026}")
+                    .into_any_element(),
+            );
+        }
+        // A sound: its waveform stays the picture, with the pane's play bar
+        // along its bottom, started at once as Play was what was pressed.
+        if let Some(sound) = shot.audio().filter(|_| crate::media_view::SHOWN_HERE) {
+            let key = canvas_key(sound);
+            let path = sound.to_owned();
+            let made = crate::media_view::slot(&key, window, |opening| {
+                crate::open_gate::show_media(
+                    &path,
+                    threadbear_core::open_policy::Origin::ThisMac,
+                    crate::media_view::Kind::PaneAudio,
+                    opening,
+                )
+            });
+            return match made {
+                Ok(view) => {
+                    if std::mem::take(&mut self.canvas.as_mut()?.start_sound) {
+                        crate::media_view::play(&key);
+                    }
+                    let bar = div().absolute().left_0().right_0().bottom(px(12.));
+                    let bar = if whole { bar.h(px(44.)) } else { bar.size_0() };
+                    Some(spot.child(bar.child(view)).into_any_element())
+                }
+                Err(why) => {
+                    self.session.error = Some(why);
+                    self.canvas.as_mut()?.playing = None;
+                    None
+                }
+            };
+        }
+        let video = shot
+            .video()
+            .filter(|_| crate::media_view::SHOWN_HERE)?
+            .to_owned();
+        let view = crate::media_view::slot(&canvas_key(&video), window, |opening| {
+            crate::open_gate::show_media(
+                &video,
+                threadbear_core::open_policy::Origin::ThisMac,
+                crate::media_view::Kind::StageVideo,
+                opening,
+            )
+        });
+        match view {
+            Ok(view) => Some(spot.child(view).into_any_element()),
+            Err(why) => {
+                self.session.error = Some(why);
+                self.canvas.as_mut()?.playing = None;
+                None
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::cut_plan;
+    use crate::fit_picture::{BUDGET_BYTES, LIMITS};
+
+    // Daybreak 170, round 4: an 8,192-square picture on screen keeps 134 MB,
+    // and its cut-out asked for 896 MB besides, so it never fitted.
+    #[test]
+    fn a_cut_out_asks_only_for_what_its_piece_needs() {
+        let kept_on_screen = LIMITS.shown_pixels * 4;
+        let small = cut_plan((8192, 8192), [0.4, 0.4, 0.45, 0.45]);
+        let whole = cut_plan((8192, 8192), [0., 0., 1., 1.]);
+        for plan in [&small, &whole] {
+            let limits = gpui_kit::image_budget::DecodeLimits {
+                shown_pixels: plan.shown_pixels.min(LIMITS.shown_pixels),
+                frames: 1,
+                ..LIMITS
+            };
+            let need =
+                gpui_kit::image_budget::peak_bytes(50 << 20, Some((8192, 8192)), false, &limits)
+                    + plan.made_bytes;
+            assert!(kept_on_screen + need < BUDGET_BYTES, "{need}");
+        }
+        // The whole picture is decoded only as big as a 480-wide piece.
+        assert!(whole.shown_pixels <= 481 * 481);
+        // A small part keeps its detail: up to the picture's own size.
+        assert!(small.shown_pixels >= 4096 * 4096);
+        assert!(small.made_bytes < 8 << 20);
+    }
 }

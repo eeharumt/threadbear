@@ -20,7 +20,7 @@ import type { PatchInfo } from '../protocol.ts';
 import { plainLine, waitingWhy } from '../patch-changes.ts';
 import { actionRunProblem, automaticTrust, isInside, EMPTY_PATCH_SET, PATCH_EXTENSIONS, patchDirs, projectRoots, hookApplies, loadPatchSet, applyLive, hasLive, projectPanels, renderListPanel, renderPanel, toggleListPanel, NoSwitches, runCommand, PATCH_SH_MAX_BYTES, type CommandOutcome, type PanelRender, type PatchSet, type PatchThread, type ProjectFolder, projectPatchFiles } from '../patches.ts';
 import { liveCommandEnv } from '../shell-allowlist.ts';
-import { codeOfUnhashedPatch, commandShown, shellWords, type CodeScan, type UnsureWhy } from '../unhashed-scan.ts';
+import { SCAN_SHOWN_MS, codeOfUnhashedPatch, commandShown, shellWords, type CodeScan, type UnsureWhy } from '../unhashed-scan.ts';
 import type { EditsAsk } from '../trust-off-thread.ts';
 export { codeOfUnhashedPatch, commandShown, shellWords, type UnsureWhy };
 import fs from 'node:fs';
@@ -28,7 +28,7 @@ import os from 'node:os';
 import path from 'node:path';
 import type { ThreadState, Turn } from '../runner.ts';
 import type { ThreadRecord } from '../store.ts';
-import { FOLDER_CACHE_MS, HOOK_TELL_CHARS, HOOK_TELL_LIMIT, LIVE_POLL_MS, LIVE_SHARE_MS, PATCHES_TTL_MS } from '../runner.ts';
+import { FOLDER_CACHE_MS, HOOK_TELL_CHARS, HOOK_TELL_LIMIT, LIVE_POLL_MS, LIVE_SHARE_MS, PATCHES_TTL_MS } from './timings.ts';
 import { safeStart } from '../safe-cut.ts';
 
 // The files in a Claude login's folder that hold its user settings.
@@ -566,7 +566,7 @@ export const patchesPart = {
         let scan: EditsAsk;
         const from = info.source === 'home' ? cwd : (info.folder ?? cwd);
         try {
-          scan = this.offThread ? await this.offThread.editsAsk(info.file, from, this.clock.now()) : codeOfUnhashedPatch(info.file, from, this.clock.now());
+          scan = this.offThread ? await this.offThread.editsAsk(info.file, from, this.clock.now(), SCAN_SHOWN_MS) : codeOfUnhashedPatch(info.file, from, this.clock.now(), SCAN_SHOWN_MS);
         } catch {
           return info;
         }

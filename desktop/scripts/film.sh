@@ -140,7 +140,7 @@ case "$cmd" in
         --no-build) build=0; shift ;;
         # A live page for the mock's demo_live_page thread (the livePages experiment).
         --live-page) live_page="$2"; shift 2 ;;
-        # The mock's demo switches (TB_MOCK_FEED=1, TB_MOCK_RECIPES=1...),
+        # The mock's demo switches (TB_MOCK_RECIPES=1, TB_MOCK_NESTED=1...),
         # which the changelog's clips of an experiment need.
         --mock-env) [[ "$2" =~ ^[A-Z_][A-Z0-9_]*= ]] || die "--mock-env takes NAME=value"; mock_env+=("$2"); shift 2 ;;
         *) die "unknown start option $1" ;;

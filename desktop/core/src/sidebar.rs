@@ -160,8 +160,16 @@ impl RowAction {
             RowAction::Archive => "Archive",
             RowAction::Unsnooze => "Wake",
             RowAction::Unarchive => "Unarchive",
+            RowAction::Delete if !self.enabled(t) => "Delete it on the Mac it runs on",
             RowAction::Delete => "Delete chat…",
         }
+    }
+
+    /// Whether the button can be pressed. Delete can't on another runner's
+    /// thread: that goes through Convex, which has no delete
+    /// (runner/src/parity.ts, "Done on that Mac").
+    pub fn enabled(self, t: &ThreadSummary) -> bool {
+        !(self == RowAction::Delete && t.is_remote())
     }
 
     /// Its SF Symbol, which `gpui/src/icons.rs` maps to the bundled icon.
@@ -1316,53 +1324,6 @@ pub fn preview_plain(text: &str) -> String {
     stripped.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-/// The threads the quiet inbox archived since local midnight that are
-/// still archived, newest first: the Inbox's "Quietly archived: N today"
-/// and the list it opens (protocol "Inbox guess").
-pub fn quiet_today<'a, Tz: TimeZone>(
-    threads: impl IntoIterator<Item = &'a ThreadSummary>,
-    now: &DateTime<Tz>,
-) -> Vec<&'a ThreadSummary> {
-    let midnight = now
-        .timezone()
-        .with_ymd_and_hms(now.year(), now.month(), now.day(), 0, 0, 0)
-        .earliest()
-        .map_or(i64::MAX, |d| d.timestamp_millis());
-    let at = |t: &ThreadSummary| {
-        t.quietly_archived
-            .as_ref()
-            .and_then(|q| parse_ms(&q.at))
-            .unwrap_or(i64::MIN)
-    };
-    let mut out: Vec<&ThreadSummary> = threads
-        .into_iter()
-        .filter(|t| t.is_archived() && at(t) >= midnight)
-        .collect();
-    out.sort_by_key(|t| std::cmp::Reverse(at(t)));
-    out
-}
-
-/// The Inbox's line for them, and its tooltip.
-pub fn quiet_line(count: usize, open: bool) -> (String, String) {
-    let line = format!("Quietly archived: {count} today");
-    let things = if count == 1 { "thread" } else { "threads" };
-    let tip = if open {
-        "Hide the list".to_owned()
-    } else {
-        format!(
-            "Show the {things} archived today because a model judged you didn't need to see {}",
-            if count == 1 { "it" } else { "them" }
-        )
-    };
-    (line, tip)
-}
-
-/// "Should have shown me": a quiet row's button's tooltip, naming its
-/// thread so each is its own control.
-pub fn should_have_shown_tip(title: &str) -> String {
-    format!("Should have shown me: bring \u{201c}{title}\u{201d} back to your inbox and tell the model it shouldn't have hidden it")
-}
-
 /// Which archived threads the Archived section draws: the most recent few,
 /// every match while searching, and the open thread always (`ArchiveRows`).
 pub const ARCHIVE_FIRST: usize = 20;
@@ -1445,6 +1406,7 @@ pub fn dress_box(t: &mut ThreadSummary, b: &crate::remote::RunnerBox) {
         return;
     }
     t.needs_you = true;
+    t.wait_state = Some("needsYou".to_owned());
     if matches!(t.status.as_str(), "starting" | "running") {
         t.status = "idle".to_owned();
     }
@@ -1469,36 +1431,6 @@ mod tests {
         DateTime::parse_from_rfc3339(s)
             .unwrap()
             .with_timezone(&FixedOffset::east_opt(11 * 3600).unwrap())
-    }
-
-    #[test]
-    fn quiet_today_counts_this_local_day_newest_first() {
-        let now = at("2026-11-23T10:00:00+11:00");
-        let quiet = |id: &str, when: &str| {
-            let mut t = thread(
-                json!({ "archivedAt": when, "archivedBy": "threadbear", "quietlyArchived": { "at": when, "why": "A receipt." } }),
-            );
-            t.id = id.into();
-            t
-        };
-        // Midnight in Melbourne is 13:00 UTC the day before.
-        let early = quiet("early", "2026-11-22T13:30:00Z");
-        let late = quiet("late", "2026-11-22T22:00:00Z");
-        let yesterday = quiet("yesterday", "2026-11-22T12:59:00Z");
-        let mut back = quiet("back", "2026-11-22T20:00:00Z");
-        back.archived_at = None;
-        let plain = thread(json!({ "archivedAt": "2026-11-22T22:00:00Z" }));
-        let all = [early, late, yesterday, back, plain];
-        let ids: Vec<&str> = quiet_today(all.iter(), &now)
-            .iter()
-            .map(|t| t.id.as_str())
-            .collect();
-        assert_eq!(ids, ["late", "early"]);
-        assert_eq!(quiet_line(1, false).0, "Quietly archived: 1 today");
-        assert_eq!(quiet_line(6, false).0, "Quietly archived: 6 today");
-        // One the runner sends oddly is no quiet archive, not a broken row.
-        let odd = thread(json!({ "archivedAt": "2026-11-22T22:00:00Z", "quietlyArchived": "yes" }));
-        assert!(odd.quietly_archived.is_none());
     }
 
     #[test]
@@ -1942,6 +1874,18 @@ mod tests {
         let starred = thread(json!({ "starredAt": "2026-11-09T00:00:00Z" }));
         assert_eq!(RowAction::Star.tip(&starred), "Remove star");
         assert_eq!(RowAction::Star.symbol(&starred), "star.fill");
+        // Another Mac's thread: its delete would go through Convex, which
+        // has none (runner/src/parity.ts), so the trash is greyed out.
+        assert!(RowAction::Delete.enabled(&plain));
+        let mut elsewhere = thread(json!({}));
+        elsewhere.runner_id = Some("bb7cc4a5feb2".into());
+        assert!(!RowAction::Delete.enabled(&elsewhere));
+        assert!(RowAction::Unarchive.enabled(&elsewhere));
+        assert_eq!(
+            RowAction::Delete.tip(&elsewhere),
+            "Delete it on the Mac it runs on"
+        );
+        assert_eq!(RowAction::Delete.tip(&plain), "Delete chat…");
     }
 
     #[test]

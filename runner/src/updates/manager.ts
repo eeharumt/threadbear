@@ -82,11 +82,27 @@ const ACP_UPDATE_TIMEOUT_MS = 5 * 60_000;
 export const ACP_CHECK_FRESH_MS = 24 * 60 * 60_000;
 
 // An ACP agent's `--version`: OpenCode prints "1.18.23", Grok
-// "grok 1.0.77 (50ca579fa996) [stable]". The first word that starts with a
-// digit, else the first word.
+// "grok 1.0.77 (50ca579fa996) [stable]". The first word that looks like a
+// version (two numbers and a dot at least), else the whole output when
+// it's one word. Antigravity's prints only build lines ("Built on Fri Oct
+// 30 01:09:22 2026"), and until 24 Nov 2026 its row said "Antigravity 30".
 export function acpVersion(stdout: string): string | undefined {
   const text = stdout.trim();
-  return /(?:^|\s)v?(\d[^\s]{0,59})/.exec(text)?.[1] ?? /^\S{1,60}/.exec(text)?.[0];
+  return /(?:^|\s)v?(\d+\.\d[^\s]{0,57})/.exec(text)?.[1] ?? /^\S{1,60}$/.exec(text)?.[0];
+}
+
+// An install kept in a folder named for its version
+// (~/.delegate/agy-acp/1.4.5/agy_acp_server.par), for an agent whose
+// `--version` doesn't say.
+export function versionFromFolder(binary: string): string | undefined {
+  let real = binary;
+  try {
+    real = fs.realpathSync(binary);
+  } catch {
+    // The path as given.
+  }
+  const dir = path.basename(path.dirname(real));
+  return /^v?(\d+\.\d+(?:\.\d+)*)$/.exec(dir)?.[1];
 }
 
 export class CliUpdates {
@@ -313,7 +329,7 @@ export class CliUpdates {
     if (!binary) return;
     const args = this.d.acp?.commandArgs?.(p, binary, ['--version']) ?? ['--version'];
     const r = await this.exec(binary, args, { timeoutMs: LOOKUP_TIMEOUT_MS });
-    const version = r.code === 0 ? acpVersion(r.stdout) : undefined;
+    const version = (r.code === 0 ? acpVersion(r.stdout) : undefined) ?? versionFromFolder(binary);
     if (version && this.installed[p] !== version) {
       this.installed[p] = version;
       this.changed();
@@ -669,6 +685,12 @@ export class CliUpdates {
       // On a first start, a latest that won't install still leaves the
       // tested version to try.
       if (o.bootstrap && target !== this.d.codex.testedVersion && !this.copies.currentVersion()) return this.installCodex(this.d.codex.testedVersion, { bootstrap: false });
+      // npm's "latest" can name a release minutes before its download is
+      // up (0.172.0 on 24 Nov). Not a failure: the next check tries again.
+      if (unpublished(r.output, target)) {
+        this.finish('codex', { state: 'unchanged', targetVersion: target, message: `Codex ${target} isn't ready to download yet; the next check tries again.` });
+        return;
+      }
       this.finish('codex', { state: 'failed', targetVersion: target, message: r.message });
       return;
     }
@@ -781,4 +803,9 @@ function stripUndefined<T extends Record<string, unknown>>(o: T): T {
 // replaces or clears it.
 function sameHold(a: CodexHold | undefined, b: CodexHold): boolean {
   return a?.version === b.version && a.reason === b.reason && (a.missing ?? []).join('\n') === (b.missing ?? []).join('\n');
+}
+
+// npm's 404 for the release's own download, as against any other failure.
+export function unpublished(output: string, version: string): boolean {
+  return /\bE404\b/.test(output) && output.includes(`/codex-${version}.tgz`);
 }

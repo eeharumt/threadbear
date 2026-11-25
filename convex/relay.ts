@@ -13,7 +13,7 @@ import { ConvexError, v } from 'convex/values';
 import type { OrderedQuery } from 'convex/server';
 import { internalMutation, mutation, query, type MutationCtx, type QueryCtx } from './_generated/server';
 import type { DataModel, Doc, Id } from './_generated/dataModel';
-import { checkRunnerId, forbidden, isSeq, MAX_SEQ, pageLimit, runnerAuth, sha256, withoutCredentials } from './lib';
+import { checkRunnerId, forbidden, isSeq, MAX_SEQ, ownerFenced, pageLimit, runnerAuth, sha256, withoutCredentials } from './lib';
 import { docBytes, isThreadId, mayTouch, ownThreadOnly } from './runnerAccess';
 import { queued, request as requestMachine } from './machines';
 import { requestStateFrom } from './requestStates';
@@ -723,7 +723,10 @@ export const closeRequest = mutation({
   handler: async (ctx, { key, requestId }) => {
     const caller = await runnerAuth(ctx, key, 'closeRequest');
     const r = await ctx.db.query('runnerRequests').withIndex('by_requestId', (q) => q.eq('requestId', requestId)).first();
-    if (!r || (!caller.owner && r.runnerId !== caller.runnerId) || !ownThreadOnly(caller, r.threadId)) throw new ConvexError({ kind: 'notFound', message: 'no such request' });
+    // The asking runner's alone: the owner key files none, and doesn't close
+    // one of a runner with a live key of its own (lib.ts ownerFenced; Mike's
+    // no is decideRequest's).
+    if (!r || (!caller.owner && r.runnerId !== caller.runnerId) || !ownThreadOnly(caller, r.threadId) || (await ownerFenced(ctx, caller, r.runnerId))) throw new ConvexError({ kind: 'notFound', message: 'no such request' });
     // Only one nobody has started: a claimed one may be starting now.
     if (r.state !== 'pending') return null;
     if (steppingFor('requestState')) await asBefore(ctx, r, { state: 'closed', decidedAt: Date.now() });

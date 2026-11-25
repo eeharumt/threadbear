@@ -4,15 +4,13 @@
 import { Then, When } from '@cucumber/cucumber';
 import { okValue, sleep } from '../support/driver.ts';
 import type { ThreadbearWorld } from '../support/world.ts';
+import { reviewId } from './review.steps.ts';
 
-/** The demo thread's review, the one the board's scenarios open. */
-const DEMO_REVIEW = 'review_account_picker';
-
-type CanvasState = { on: boolean; stop: number; stops: number; notesOn: boolean; agentMarks: number; tool: string; marks: string[] };
+type CanvasState = { on: boolean; stop: number; stops: number; notesOn: boolean; agentMarks: number; tool: string; marks: string[]; playing?: string | null };
 type WithCanvas = { reply: string; replyKeys?: boolean; canvas?: CanvasState | null };
 
 async function board(world: ThreadbearWorld, cmd: Record<string, unknown> = {}): Promise<WithCanvas> {
-  return JSON.parse(okValue(await world.app.do({ cmd: 'review', id: DEMO_REVIEW, open: false, ...cmd }, 30))) as WithCanvas;
+  return JSON.parse(okValue(await world.app.do({ cmd: 'review', id: reviewId(world), open: false, ...cmd }, 30))) as WithCanvas;
 }
 
 async function untilBoard(world: ThreadbearWorld, what: string, check: (s: WithCanvas) => boolean): Promise<void> {
@@ -60,4 +58,47 @@ When("I click low in the review's reply box", async function (this: ThreadbearWo
 
 Then("the review's reply box has the keys", async function (this: ThreadbearWorld) {
   await untilBoard(this, 'the keys in the reply box', (s) => s.replyKeys === true);
+});
+
+When('the board flies to option {string}', async function (this: ThreadbearWorld, id: string) {
+  await board(this, { canvasGo: id });
+});
+
+// A button on the board, once it's there and the board's stopped moving:
+// it may still be flying to it, and what's out of sight isn't drawn.
+When('I press {string} on the board', async function (this: ThreadbearWorld, tip: string) {
+  // Still, first: a click aimed at a button mid-flight lands beside it.
+  let last = '';
+  await untilBoard(this, 'the board still', (s) => {
+    const now = JSON.stringify((s.canvas as { camera?: number[] } | null | undefined)?.camera ?? null);
+    const still = now === last;
+    last = now;
+    return still;
+  });
+  const deadline = Date.now() + 10_000;
+  for (;;) {
+    try {
+      await this.app.do({ cmd: 'click', tip, review: reviewId(this) });
+      return;
+    } catch (e) {
+      if (Date.now() > deadline) throw e;
+      await sleep(200);
+    }
+  }
+});
+
+When('the board flies to option {string}, shot {int}', async function (this: ThreadbearWorld, id: string, shot: number) {
+  await board(this, { canvasGo: id, canvasShot: shot - 1 });
+});
+
+Then('the board plays a clip in place', async function (this: ThreadbearWorld) {
+  await untilBoard(this, 'a clip playing on the board', (s) => s.canvas?.playing === 'clip');
+});
+
+Then('nothing plays on the board', async function (this: ThreadbearWorld) {
+  await untilBoard(this, 'nothing playing on the board', (s) => !s.canvas?.playing);
+});
+
+Then('the board plays a sound in place', async function (this: ThreadbearWorld) {
+  await untilBoard(this, 'a sound playing on the board', (s) => s.canvas?.playing === 'sound');
 });

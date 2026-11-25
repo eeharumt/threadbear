@@ -20,7 +20,11 @@ import type { ThreadRecord } from './store.ts';
 //      and sends it up with its own token, so search results and the reader
 //      can open the thread. The runner never holds an archive credential.
 //   2. The sync's state (`agent-archive status --json`), for tb status.
-//   3. Keeping this machine's sync on agent-archive's main, when runner.json
+//   3. The archive server's health (`/api/health` at the sync's archive URL),
+//      for tb status: whether it answers, and its deploys, backups and disk.
+//      On the server's own machine (Bruce) the runner starts it again when
+//      it has stopped and launchd hasn't (stage 3 of the plan).
+//   4. Keeping this machine's sync on agent-archive's main, when runner.json
 //      names the repo, and installing each new build on machines that can't
 //      reach the private repo themselves (`archive.pushTo`). Bruce's archive
 //      server has a deployer that already does this for Bruce's sync, so a
@@ -42,6 +46,16 @@ const EVERY_MS = 10 * 60_000;
 // one up a while, so only past this is it said to have stopped.
 export const STALE_MS = 3 * 3_600_000;
 const STATUS_TIMEOUT_MS = 30_000;
+const HEALTH_TIMEOUT_MS = 15_000;
+// A backup runs nightly, so only past two days is it said to be behind.
+export const BACKUP_STALE_MS = 2 * 86_400_000;
+export const LOW_DISK_BYTES = 10 * 1024 ** 3;
+// The server's LaunchAgent, as the archive's installer names it. Started
+// again only after two checks in a row found it down (a deploy swaps
+// releases in between), and at most once an hour.
+export const SERVER_SERVICE = 'app.mikecann.agent-archive-server';
+const DOWN_CHECKS_BEFORE_START = 2;
+const START_EVERY_MS = 3_600_000;
 // The sidebar waits on a search, so it gets less than the sync's status.
 const QUERY_TIMEOUT_MS = 20_000;
 // The archive's own thread ids (its MCP refuses anything else).
@@ -118,8 +132,25 @@ export type ArchiveOff = 'experiment' | 'not_installed';
 export type ArchiveSearch = { hits: ArchiveHit[]; more: boolean } | { hits: []; off: ArchiveOff };
 export type ArchiveRead = { thread: Record<string, unknown>; items: unknown[] };
 
+// The archive server, as this runner last saw it (checkServer).
+export type ArchiveServerHealth = {
+  url: string;
+  checkedAt: number;
+  up: boolean; // answered /api/health at all
+  // Since when it hasn't answered, through every check since.
+  downSince?: number;
+  error?: string;
+  release?: string;
+  // What its answer says is wrong: a failed deploy or backup, little disk.
+  problems?: string[];
+  // On the server's machine: when this runner last started it again.
+  startedAt?: number;
+  startError?: string;
+};
+
 export type ArchiveStatus = {
   installed: boolean;
+  server?: ArchiveServerHealth;
   sessions: number;
   sync?: ArchiveSyncState;
   syncError?: string;
@@ -215,6 +246,28 @@ export function sessionsFor(
   return { version: 1, runner, ...(claudeRoots.length ? { claudeRoots } : {}), ...(codexRoots.length ? { codexRoots } : {}), sessions };
 }
 
+// What /api/health's answer says is wrong, in tb status's words. Every field
+// may be missing (an older server says less), and then nothing is said.
+export function serverProblems(body: unknown, now: number, ago: (ms: number) => string): string[] {
+  const o = (x: unknown): Record<string, unknown> => (x && typeof x === 'object' && !Array.isArray(x) ? (x as Record<string, unknown>) : {});
+  if (!body || typeof body !== 'object') return ["its health check didn't answer in JSON"];
+  const b = o(body);
+  const out: string[] = [];
+  if (b.ok !== true) out.push('it says it is not healthy');
+  const deploys = o(b.deploys);
+  const deploy = o(deploys.lastDeploy);
+  if (deploy.ok === false) out.push(`its last deploy${typeof deploy.sha === 'string' ? ` (${deploy.sha.slice(0, 7)})` : ''} failed`);
+  if (o(deploys.lastPoll).ok === false) out.push("its deployer can't reach the archive's repo");
+  const backups = o(b.backups);
+  const backup = o(backups.lastBackup);
+  if (backup.ok === false) out.push('its last backup failed');
+  else if (typeof backup.finishedAt === 'number' && now - backup.finishedAt > BACKUP_STALE_MS) out.push(`its last backup was ${ago(now - backup.finishedAt)} ago`);
+  if (o(backups.lastRestoreTest).ok === false) out.push('its last restore test failed');
+  const free = o(b.disk).freeBytes;
+  if (typeof free === 'number' && free < LOW_DISK_BYTES) out.push(`only ${(free / 1024 ** 3).toFixed(1)} GB of disk left`);
+  return out;
+}
+
 export function readSyncState(stdout: string): ArchiveSyncState | undefined {
   try {
     const v = JSON.parse(stdout) as unknown;
@@ -277,11 +330,28 @@ export type AgentArchiveDeps = {
   serverDir?: string;
   cacheDir?: string;
   run?: Run;
+  // /api/health's answer, or a throw when the server doesn't answer.
+  health?: (url: string) => Promise<unknown>;
+  // The server's machine only: whether launchd has the server running.
+  uid?: number;
   now?: () => Date;
 };
 
+async function fetchHealth(url: string): Promise<unknown> {
+  const res = await fetch(new URL('/api/health', url), { signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS) });
+  // A server that answers at all is up, even unhealthy: its body says why.
+  const text = await res.text();
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    throw new Error(`HTTP ${res.status} without its health in JSON`);
+  }
+}
+
 export class AgentArchive {
-  private readonly d: Required<Omit<AgentArchiveDeps, 'serverDir'>> & { serverDir?: string };
+  private readonly d: Required<Omit<AgentArchiveDeps, 'serverDir' | 'uid'>> & { serverDir?: string; uid?: number };
+  private server: ArchiveServerHealth | undefined;
+  private downChecks = 0;
   private first: NodeJS.Timeout | undefined;
   private timer: NodeJS.Timeout | undefined;
   private sync: ArchiveSyncState | undefined;
@@ -299,7 +369,9 @@ export class AgentArchive {
       serverDir: serverDir(),
       cacheDir: path.join(cacheRoot, 'agent-archive'),
       run,
+      health: fetchHealth,
       now: () => new Date(),
+      ...(process.getuid ? { uid: process.getuid() } : {}),
       ...deps,
     };
   }
@@ -336,6 +408,7 @@ export class AgentArchive {
     this.writeSessions();
     if (!this.installed()) return;
     await this.readStatus();
+    await this.checkServer();
     await this.followMain();
   }
 
@@ -369,9 +442,66 @@ export class AgentArchive {
     }
   }
 
+  private isServerHost(): boolean {
+    return !!this.d.serverDir && fs.existsSync(this.d.serverDir);
+  }
+
+  // The server at the sync's archive URL: up or not, and what its health
+  // says. On its own machine, one that's down two checks running and not
+  // running under launchd is started again (`kickstart` without -k, so a
+  // running server is never stopped).
+  async checkServer(): Promise<void> {
+    const url = this.sync?.archiveUrl;
+    if (!url) {
+      this.server = undefined;
+      return;
+    }
+    const now = this.d.now().getTime();
+    const prev = this.server?.url === url ? this.server : undefined;
+    const ago = (ms: number) => `${Math.round(ms / 86_400_000)} days`;
+    try {
+      const body = await this.d.health(url);
+      const problems = serverProblems(body, now, ago);
+      const release = (body as { release?: unknown } | null)?.release;
+      if (prev && !prev.up) this.d.log.info('agent archive: its server answers again', { url });
+      this.downChecks = 0;
+      this.server = { url, checkedAt: now, up: true, ...(typeof release === 'string' ? { release } : {}), ...(problems.length ? { problems } : {}), ...(prev?.startedAt ? { startedAt: prev.startedAt } : {}) };
+    } catch (e) {
+      this.downChecks++;
+      if (!prev || prev.up) this.d.log.warn('agent archive: its server is not answering', { url, error: errText(e) });
+      this.server = { url, checkedAt: now, up: false, downSince: prev && !prev.up ? (prev.downSince ?? now) : now, error: errText(e), ...(prev?.startedAt ? { startedAt: prev.startedAt } : {}), ...(prev?.startError ? { startError: prev.startError } : {}) };
+      await this.startServer(now);
+    }
+  }
+
+  private async startServer(now: number): Promise<void> {
+    const s = this.server;
+    if (!s || process.platform !== 'darwin' || this.d.uid === undefined || !this.isServerHost()) return;
+    if (this.downChecks < DOWN_CHECKS_BEFORE_START || (s.startedAt && now - s.startedAt < START_EVERY_MS)) return;
+    const target = `gui/${this.d.uid}/${SERVER_SERVICE}`;
+    let printed: string;
+    try {
+      printed = await this.d.run('launchctl', ['print', target], { timeoutMs: 15_000 });
+    } catch (e) {
+      // Not loaded at all: something took it out on purpose (a deploy, Mike).
+      s.startError = `its service isn't loaded (${errText(e)})`;
+      return;
+    }
+    if (/^\s*pid = \d+/m.test(printed)) return; // running, just not answering: said in tb status, left alone
+    s.startedAt = now;
+    try {
+      await this.d.run('launchctl', ['kickstart', target], { timeoutMs: 30_000 });
+      delete s.startError;
+      this.d.log.warn('agent archive: started its server again', { service: SERVER_SERVICE });
+    } catch (e) {
+      s.startError = errText(e);
+      this.d.log.warn('agent archive: could not start its server', { error: errText(e) });
+    }
+  }
+
   updateState(): ArchiveUpdateState {
     const saved = readJsonSync<ArchiveUpdateState>(path.join(this.d.home, UPDATE_FILE));
-    if (this.d.serverDir && fs.existsSync(this.d.serverDir)) return { by: 'server' };
+    if (this.isServerHost()) return { by: 'server' };
     if (!this.d.settings()?.repo) return { by: 'nobody' };
     return { ...saved, by: 'runner' };
   }
@@ -529,6 +659,7 @@ export class AgentArchive {
       installed: this.installed(),
       sessions: this.sessions,
       ...(this.sync ? { sync: this.sync } : {}),
+      ...(this.server ? { server: this.server } : {}),
       ...(this.syncError ? { syncError: this.syncError } : {}),
       update: this.updateState(),
       ...(this.updating ? { updating: true } : {}),
@@ -588,5 +719,15 @@ export function formatArchive(a: ArchiveStatus, now: number, ago: (ms: number) =
     const bad = Object.entries(u.pushed ?? {}).filter(([, v]) => v !== 'ok').map(([h, v]) => `${h}: ${v}`);
     parts.push(`its sync is on main (${u.sha.slice(0, 7)})${bad.length ? `, but installing it failed on ${bad.join('; ')}` : ''}`);
   }
-  return `Agent Archive: ${parts.join(', ')}.`;
+  const server = a.server ? ` ${formatServer(a.server, now, ago)}` : '';
+  return `Agent Archive: ${parts.join(', ')}.${server}`;
+}
+
+function formatServer(s: ArchiveServerHealth, now: number, ago: (ms: number) => string): string {
+  const started = s.startedAt ? ` This runner started it again ${ago(now - s.startedAt)} ago.` : '';
+  const couldnt = s.startError ? ` Starting it again failed: ${s.startError}.` : '';
+  if (!s.up) return `Its archive server isn't answering, for ${ago(now - (s.downSince ?? s.checkedAt))} (${s.error ?? 'no reason given'}).${started}${couldnt}`;
+  const release = s.release ? ` on ${s.release.slice(0, 7)}` : '';
+  if (s.problems?.length) return `Its archive server answers${release}, but ${s.problems.join(', ')}.${started}`;
+  return `Its archive server is healthy${release}.${started}`;
 }

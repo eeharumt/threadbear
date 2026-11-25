@@ -479,19 +479,21 @@ impl ReviewWindow {
         }
     }
 
+    /// The mark on the canvas a chip in the reply stands for, if it's one.
+    pub(super) fn reply_chip_mark(&self, id: &SharedString) -> Option<u32> {
+        self.reply_pictures.marks.get(id).map(|m| m.n)
+    }
+
     /// A plain click on a picture's chip in the reply: the picture full size
     /// over this window, stepping through the reply's others, as a chip in
-    /// the thread's box opens (composer.rs `open_picture`).
+    /// the thread's box opens (composer.rs `open_picture`). A mark's chip
+    /// isn't a picture: the band shows the mark on the canvas instead.
     pub(super) fn open_reply_picture(
         &mut self,
         id: &SharedString,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if let Some(n) = self.reply_pictures.marks.get(id).map(|m| m.n) {
-            self.canvas_show_mark(n, cx);
-            return;
-        }
         let paths = self.reply_pictures.paths(self.reply.read(cx));
         let Some(chosen) = paths
             .iter()

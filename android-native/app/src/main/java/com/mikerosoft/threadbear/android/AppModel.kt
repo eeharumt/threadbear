@@ -9,6 +9,7 @@ import com.mikerosoft.threadbear.kit.CommandKey
 import com.mikerosoft.threadbear.kit.PendingCommand
 import com.mikerosoft.threadbear.kit.PendingCommands
 import com.mikerosoft.threadbear.kit.InboxSections
+import com.mikerosoft.threadbear.kit.WaitGuess
 import com.mikerosoft.threadbear.kit.Pairing
 import com.mikerosoft.threadbear.kit.PairingRequest
 import com.mikerosoft.threadbear.kit.PairingSource
@@ -473,9 +474,9 @@ class AppModel(context: Context, private val scope: CoroutineScope) {
         fun held(key: CommandKey) = pending[key]?.takeIf { it.state.holdsChange }
         var t = thread
         held(CommandKey.Star(id))?.let { t = t.copy(starredAt = if (it.value == "on") t.starredAt ?: Instant.now() else null) }
-        if (held(CommandKey.MarkSeen(id)) != null) t = t.copy(unread = false, needsYou = false)
-        if (held(CommandKey.Wake(id)) != null) t = t.copy(snoozedUntil = null, snoozedUntilRestart = null)
-        if (held(CommandKey.Unarchive(id)) != null) t = t.copy(archivedAt = null)
+        if (held(CommandKey.MarkSeen(id)) != null) t = WaitGuess.seen(t)
+        if (held(CommandKey.Wake(id)) != null) t = WaitGuess.woken(t.copy(snoozedUntil = null, snoozedUntilRestart = null))
+        if (held(CommandKey.Unarchive(id)) != null) t = WaitGuess.unarchived(t.copy(archivedAt = null))
         held(CommandKey.Rename(id))?.value?.let { t = t.copy(title = it) }
         return t
     }

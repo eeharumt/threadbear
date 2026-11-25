@@ -578,9 +578,12 @@ a.lab-review-head:hover { color: var(--muted); }
 .confirm-url { display: block; max-height: 30vh; overflow: auto; padding: 8px 10px; border-radius: 8px; background: var(--fill); font-size: 12.5px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .confirm-buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
 
-/* The Machines page (machines.tsx): a bar, then the viewer filling the rest. */
+/* The Machines page (machines.tsx): a bar, then the viewer filling the rest.
+   At least the window's height, not exactly it: the home page's cards and a
+   tall drawing run past the window, and held to it the viewer's dark
+   background and sticky bar stopped one window down, over the lighter grey. */
 .machines-page {
-  height: 100vh;
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
   --mv-top: 41px;

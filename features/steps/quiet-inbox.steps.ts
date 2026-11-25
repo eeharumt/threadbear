@@ -3,43 +3,23 @@ import { Given, Then, When } from '@cucumber/cucumber';
 import type { Dump } from '../support/driver.ts';
 import type { ThreadbearWorld } from '../support/world.ts';
 
-// The quiet inbox for Mike's own threads (experiment quietInboxMine): the
-// Inbox's "Quietly archived: N today" line and its list. `dump`'s
-// `sidebar.quiet` has the line, whether the list is open, and its threads.
-type Quiet = { line: string; open: boolean; threads: { id: string; title: string; why: string }[] } | null | undefined;
-const quiet = (d: Dump): Quiet => (d.sidebar as { quiet?: Quiet }).quiet;
-
+// The quiet inbox for Mike's own threads (experiment quietInboxMine): an
+// archived row it hid, and its menu's Should Have Shown Me.
 Given('the quiet inbox archived {string} and {string} today', async function (this: ThreadbearWorld, first: string, second: string) {
   await this.until('the threads listed', (d) => Boolean(this.thread(d, first) && this.thread(d, second)));
   await this.app.do({ cmd: 'mock', method: 'quietArchive', params: { titles: [first, second] } });
-  await this.until('the quiet line', (d) => Boolean(quiet(d)));
+  const archived = (d: Dump, title: string) => Boolean(d.sidebar.sections.find((x) => x.name === 'Archived')?.threads.some((t) => t.title === title));
+  await this.until('the threads archived', (d) => archived(d, first) && archived(d, second));
 });
 
 Given('the runner will refuse the next Should have shown me', async function (this: ThreadbearWorld) {
   await this.app.do({ cmd: 'mock', method: 'quietArchive', params: { refuse: true } });
 });
 
-Then('the foot of the Inbox says {string}', async function (this: ThreadbearWorld, line: string) {
-  await this.until(`"${line}" at the foot of the Inbox`, (d) => quiet(d)?.line === line);
-});
-
-// Its real click, by its tooltip.
-When('I open the quietly archived list', async function (this: ThreadbearWorld) {
-  await this.until('the quiet line', (d) => Boolean(quiet(d)));
-  await this.app.do({ cmd: 'click', tipPrefix: 'Show the threads archived today' });
-  await this.until('the list open', (d) => quiet(d)?.open === true);
-});
-
-Then('the quietly archived list is {string}, {string}', async function (this: ThreadbearWorld, first: string, second: string) {
-  await this.until(`the list "${first}", "${second}"`, (d) => {
-    const q = quiet(d);
-    return q?.open === true && q.threads.map((t) => t.title).join('|') === `${first}|${second}`;
-  });
-});
-
-When('I press Should have shown me on {string}', async function (this: ThreadbearWorld, title: string) {
-  await this.until(`"${title}" in the list`, (d) => Boolean(quiet(d)?.threads.some((t) => t.title === title)));
-  await this.app.do({ cmd: 'click', tipPrefix: `Should have shown me: bring “${title}”` });
+// As the row's menu item does (`should-have-shown`, sidebar.rs).
+When('I choose Should Have Shown Me for {string}', async function (this: ThreadbearWorld, title: string) {
+  const t = await this.until(`a thread called "${title}"`, (d) => this.thread(d, title));
+  await this.app.do({ cmd: 'should-have-shown', id: t.id });
 });
 
 Then('the runner was told I should have been shown {string}', async function (this: ThreadbearWorld, title: string) {

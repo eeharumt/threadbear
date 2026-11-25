@@ -265,6 +265,15 @@ impl ReviewShot {
             .map(|m| m.path.as_str())
     }
 
+    /// The sound to play, when the shot is one (MP3, M4A, AAC or WAV): its
+    /// image is then its waveform.
+    pub fn audio(&self) -> Option<&str> {
+        self.media
+            .as_ref()
+            .filter(|m| m.media_type.starts_with("audio/"))
+            .map(|m| m.path.as_str())
+    }
+
     /// The page to show, when the shot is one.
     pub fn page(&self) -> Option<&str> {
         self.media
@@ -2345,8 +2354,19 @@ mod tests {
             media: Some(ImageRef::new("/p/index.html", "text/html")),
             marks: Vec::new(),
         };
+        let sound = ReviewShot {
+            title: None,
+            image: image("s"),
+            media: Some(ImageRef::new("/bed.m4a", "audio/mp4")),
+            marks: Vec::new(),
+        };
         assert_eq!((video.video(), video.page()), (Some("/a.mp4"), None));
         assert_eq!((page.video(), page.page()), (None, Some("/p/index.html")));
+        assert_eq!(
+            (sound.audio(), sound.video(), sound.page()),
+            (Some("/bed.m4a"), None, None)
+        );
+        assert_eq!((video.audio(), page.audio()), (None, None));
         assert_eq!(
             page.image.path, "/nonexistent/p.png",
             "the still stays the image, for thumbnails"

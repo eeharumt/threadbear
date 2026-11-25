@@ -617,7 +617,7 @@ export function formatUpstream(u: UpstreamStatus, now: number): string {
         ...(r.notes ?? []).flatMap((n) => [`  What changed in ${n.tag}:`, ...n.lines.map((l) => `    ${l}`)]),
         ...(r.notes?.length ? ['  Every change:'] : []),
         ...r.subjects.map((x) => `  ${x}`),
-      ].join('\n') + more + `\nIts commit, signed with the pinned key: ${r.commit}. To bring it in, follow docs/bringing-in-updates.md and merge that commit (git merge ${r.commit}), or use Bring them in, in the app's Updates panel.`;
+      ].join('\n') + more + `\nIts commit, signed with the pinned key: ${r.commit}. To bring it in, follow docs/bringing-in-updates.md, which merges that commit with scripts/merge-preview.sh --prepare and scripts/merge-prepared.sh (they read it as itself, never through this checkout's git replacement refs or grafts, as a plain git merge would), or use Bring them in, in the app's Updates panel.`;
     }
     default:
       return `Mike's releases: up to date${r ? ` with ${r.tag}` : ''}${u.reason ? ` (${u.reason})` : ''}${checked}${published}`;

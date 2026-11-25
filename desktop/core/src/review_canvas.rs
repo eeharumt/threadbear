@@ -43,11 +43,15 @@ pub const HALO_PAD: f32 = 40.;
 pub const TITLE_ROW: f32 = 52.;
 /// Between that row and the first picture.
 pub const TITLE_GAP: f32 = 10.;
-/// The option's big letter, mostly hidden behind its first picture's top
-/// right corner.
+/// The option's big letter, standing on its first picture's top right
+/// corner with just its feet behind it.
 pub const LETTER_SIZE: f32 = 230.;
-/// How much of the letter is above and left of that corner.
-const LETTER_SHOWS: f32 = 0.62;
+/// How far the letter's box starts left of that corner.
+const LETTER_LEFT: f32 = 0.62;
+/// How far it starts above it: the glyph fills nearly all its box, so this
+/// leaves only its bottom tenth or so behind the picture. At 0.62 half of it
+/// was hidden, too much (Mike, 24 Nov).
+const LETTER_ABOVE: f32 = 0.86;
 /// The agent's lead, the sticky at the board's top left.
 pub const LEAD_WIDTH: f32 = 440.;
 /// How far each frame sits below the board's top, in turn: a little
@@ -183,7 +187,7 @@ pub struct BoardOption {
     pub halo: Rect,
     /// The top row, with the tick and its name.
     pub title: Rect,
-    /// Its big letter, behind the first picture's top right corner.
+    /// Its big letter, its feet behind the first picture's top right corner.
     pub letter: Rect,
 }
 
@@ -306,8 +310,8 @@ fn lay_option(
     );
     let first = shots.first().map_or(frame, |s| s.picture);
     let letter = Rect::new(
-        first.right() - LETTER_SIZE * LETTER_SHOWS,
-        first.y - LETTER_SIZE * LETTER_SHOWS,
+        first.right() - LETTER_SIZE * LETTER_LEFT,
+        first.y - LETTER_SIZE * LETTER_ABOVE,
         LETTER_SIZE * 0.8,
         LETTER_SIZE,
     );
@@ -1069,10 +1073,12 @@ mod tests {
                     && o.halo.contains((o.frame.right(), o.frame.bottom()))
             );
             assert!(o.title.bottom() <= o.shots[0].picture.y && o.title.y >= o.frame.y);
-            // The letter is tucked behind the first picture's top right corner.
+            // The letter stands on the first picture's top right corner, with
+            // only its feet behind it: Mike found half of it hidden too much.
             let first = o.shots[0].picture;
             assert!(o.letter.contains((first.right() - 1., first.y + 1.)));
-            assert!(o.letter.y < first.y && o.letter.x < first.right());
+            assert!(o.letter.x < first.right());
+            assert!(first.y - o.letter.y >= o.letter.h * 0.8, "{o:?}");
         }
         // An option without shots shows its one image; with two, both, one
         // under the other, each with its name over it.

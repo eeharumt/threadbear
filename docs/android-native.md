@@ -205,7 +205,8 @@ for them to be built from source in the recipe.
    the working line while it runs, waiting sends with Cancel, the composer
    with Send turning into Stop while a turn runs, then the cards: approval,
    question, secret, asks, done. Replies draw all of MarkdownBlocks:
-   tables, code, nested quotes, ```slack/```email/```draft boxes with Copy,
+   tables, code (coloured by its fence language with the Mac's theme colours,
+   kit CodeColours.kt: a small tokenizer, plain past 20,000 characters), nested quotes, ```slack/```email/```draft boxes with Copy,
    ```mermaid and ```html in a locked-down web view (Pele bundled in
    assets, as on the iPhone: no network, no navigation, a page's own
    scripts never run), and pictures (capped download with one deadline,

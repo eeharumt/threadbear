@@ -35,7 +35,6 @@ export const THREAD_REQUESTS: Record<string, Row> = {
   'threads.subscribe': { what: 'Following it live (relaySeen skips relay events this reader has)', relay: 'yes', phone: { via: 'messages' } },
   'threads.heldBody': { what: "Opening a tool's output", relay: 'yes', phone: { via: 'eventBody' }, ios: { no: 'The iPhone shows a tool line, not its output.' }, android: { no: 'Android shows a tool line, not its output.' } },
   'threads.send': { what: 'Sending a message, pictures too', relay: 'yes', phone: { via: 'send' } },
-  'threads.askOthers': { what: 'Ask the others (For everyone, experiment feed)', relay: { no: "A panel's threads start on that Mac's runner; the Feed offers it for this Mac's threads only." }, phone: { no: 'The phone has no Feed.' } },
   'threads.interrupt': { what: 'Stop', relay: 'yes', phone: { via: 'interrupt' } },
   'threads.update': { what: 'Rename, archive, star, hibernate, and from the Mac its login or model', relay: 'yes', phone: { via: 'update' } },
   'threads.markSeen': { what: 'Marking it read', relay: 'yes', phone: { via: 'update' } },

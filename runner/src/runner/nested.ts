@@ -17,7 +17,7 @@ import type { RunnerPart } from './part.ts';
 import type { ImageRef } from '../protocol.ts';
 import { AGENT_MESSAGE_PREFIX } from '../protocol.ts';
 import { experimentOn } from '../experiments.ts';
-import { lowerMode } from './ceiling.ts';
+import { lowerMode } from '../access.ts';
 
 export const NESTED_THREADS = 'nestedThreads';
 

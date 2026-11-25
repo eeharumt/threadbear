@@ -36,6 +36,7 @@ use threadbear_core::review::{
 
 mod band;
 mod canvas;
+mod parts;
 pub(crate) use band::inline_note;
 mod reply_pictures;
 mod stage;
@@ -452,9 +453,6 @@ pub(crate) struct ReviewWindow {
     tabs_follow: Option<usize>,
     /// The review as a board (the `reviewCanvas` experiment, canvas.rs).
     pub(crate) canvas: Option<canvas::CanvasState>,
-    /// A clip or page double-clicked on the board, on the stage to play,
-    /// until Esc or Back to the board.
-    canvas_closer: Option<(usize, usize)>,
     /// The reply box on screen, from its last paint, for scripts that click
     /// in it.
     reply_box: std::rc::Rc<std::cell::Cell<Option<Bounds<Pixels>>>>,
@@ -564,7 +562,6 @@ impl ReviewWindow {
             tabs_scroll: ScrollHandle::new(),
             tabs_follow: None,
             canvas: parts.canvas.then(canvas::CanvasState::new),
-            canvas_closer: None,
             reply_box: Default::default(),
             closed: false,
             _poll: poll,
@@ -965,17 +962,13 @@ impl ReviewWindow {
             self.canvas_everything(cx);
             return;
         }
-        if self.canvas_closer.take().is_some() {
-            cx.notify();
-            return;
-        }
         self.session.show_all();
         self.after_move(cx);
     }
 
     /// The board is what's on show, not a clip or page on the stage.
     pub(crate) fn on_canvas(&self) -> bool {
-        self.canvas.is_some() && self.canvas_closer.is_none()
+        self.canvas.is_some()
     }
 
     fn after_move(&mut self, cx: &mut Context<Self>) {
@@ -1431,6 +1424,13 @@ impl Render for ReviewWindow {
                 .session
                 .shown_shot()
                 .is_some_and(|s| s.page().is_some());
+        // On the board, the page is the one playing there (canvas_player).
+        let page_shown = if self.on_canvas() {
+            self.canvas_playing_shot()
+                .is_some_and(|s| s.page().is_some())
+        } else {
+            page_shown
+        };
         if !page_shown {
             self.stage.page = None;
         }
@@ -1894,6 +1894,15 @@ pub(crate) async fn automation(
                         v.toggle_notes(cx);
                     }
                 }
+                // The board flown to an option, by its id, as a click on its
+                // name does, or to its picture `canvasShot` (from 0).
+                if let Some(id) = cmd["canvasGo"].as_str() {
+                    let at = v.session.review().options.iter().position(|o| o.id == id);
+                    let shot = cmd["canvasShot"].as_u64().unwrap_or(0) as usize;
+                    if let Some(at) = at {
+                        v.canvas_go_shot(at, shot, cx);
+                    }
+                }
                 if let Some(mark) = cmd["canvasMark"].as_object() {
                     v.script_mark(mark, window, cx);
                 }
@@ -2050,7 +2059,7 @@ impl ReviewWindow {
             "chips": self.reply.read(cx).tokens().len(),
             // The picture viewer over the window: "" when it's closed, else
             // "<n> of <total> <file>", with " (loading)" until it's drawn.
-            "viewer": self.viewer.describe(),
+            "viewer": self.viewer.describe(cx),
             "none": draft.none,
             "shot": s.shot(),
             "peeking": s.peeking,
@@ -2061,10 +2070,12 @@ impl ReviewWindow {
             "editable": s.editable(),
             "minimap": self.stage.minimap_showing(),
             // What the stage draws: a clip playing in the system's player
-            // (on a Mac), or a page or a clip that can't play as its still.
+            // (on a Mac), a sound's play bar on its waveform, or a page or a
+            // clip that can't play as its still.
             "stage": match (s.mode, s.shown_shot()) {
                 (ReviewMode::All, _) => "all",
                 (_, Some(shot)) if shot.video().is_some_and(|v| crate::media_view::state_of(&stage::stage_key(v)).is_some()) => "player",
+                (_, Some(shot)) if shot.audio().is_some_and(|a| crate::media_view::state_of(&stage::stage_key(a)).is_some()) => "sound",
                 (_, Some(shot)) if shot.page().is_some_and(|p| self.stage.page.as_ref().is_some_and(|(shown, _)| shown == p)) => "page",
                 (_, Some(shot)) if shot.media.is_some() => "still",
                 _ => "picture",
