@@ -19,7 +19,9 @@ import com.mikerosoft.threadbear.kit.PhoneIdentity
 import com.mikerosoft.threadbear.kit.PhoneProject
 import com.mikerosoft.threadbear.kit.PhoneRunner
 import com.mikerosoft.threadbear.kit.PhoneSection
+import com.mikerosoft.threadbear.kit.PhoneSchedule
 import com.mikerosoft.threadbear.kit.PhoneThread
+import com.mikerosoft.threadbear.kit.ScheduleAction
 import com.mikerosoft.threadbear.kit.ScheduleWake
 import com.mikerosoft.threadbear.kit.SectionFolds
 import com.mikerosoft.threadbear.kit.ShareAsk
@@ -196,6 +198,8 @@ class AppModel(context: Context, private val scope: CoroutineScope) {
     val projects: StateFlow<List<PhoneProject>> = follow(emptyList()) { it.projects() }
     val counts: StateFlow<PhoneCounts?> = follow(null) { it.counts() }
     val wakes: StateFlow<List<ScheduleWake>> = follow(emptyList()) { it.wakes() }
+    /** Every runner's schedules, read only while their screen's open; null until they've come. */
+    val schedules: StateFlow<List<PhoneSchedule>?> = follow(null) { it.schedules() }
     /** Every runner's logins and their models (backend API 20), for the new thread pickers. */
     val accounts: StateFlow<List<PhoneAccount>> = follow(emptyList(), { it in 1 until BackendApi.MODELS }) { b, older ->
         if (older) flowOf(emptyList()) else b.accounts()
@@ -499,6 +503,14 @@ class AppModel(context: Context, private val scope: CoroutineScope) {
             failure != null -> note(failure)
             // The phone not reaching the server is always news; the Mac not picking it up only while a runner looks online.
             state is PendingCommand.TimedOut && (state.id == null || runners.value.any { it.isOnline(Instant.now()) }) -> state.timedOutNote?.let(::note)
+        }
+    }
+
+    /** Pauses, resumes or runs a schedule; the row moves once its runner has done it. */
+    fun schedule(scheduleId: String, action: ScheduleAction) {
+        val b = _backend.value ?: return
+        commands.start(CommandKey.Schedule(scheduleId), action.wire, send = { b.schedule(scheduleId, action) }) { state ->
+            said(state, "The runner couldn't change that schedule.")
         }
     }
 

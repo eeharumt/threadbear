@@ -186,4 +186,6 @@ sealed interface CommandKey {
     data class Share(val threadId: String) : CommandKey
     /** An approval, question or secret card, by its approval id. */
     data class Card(val approvalId: String) : CommandKey
+    /** Pausing, resuming or running a schedule (its value is the action). */
+    data class Schedule(val scheduleId: String) : CommandKey
 }

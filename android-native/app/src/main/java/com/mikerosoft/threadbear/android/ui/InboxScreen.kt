@@ -120,6 +120,7 @@ fun InboxScreen(
     newThread: () -> Unit = {},
     settings: () -> Unit = {},
     pocket: () -> Unit = {},
+    schedules: () -> Unit = {},
 ) {
     val model = LocalModel.current
     val shell = model.shell
@@ -184,6 +185,7 @@ fun InboxScreen(
                                 }
                             }
                             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                                if (model.apiVersion >= BackendApi.SCHEDULES) ActionItem("Schedules", Line.Clock) { menu = false; schedules() }
                                 ActionItem("Settings", Line.Settings) { menu = false; settings() }
                                 update?.let { u ->
                                     ActionItem("Update to ${com.mikerosoft.threadbear.android.Updates.label(u.date)}", Line.Download) {

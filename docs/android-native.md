@@ -232,6 +232,9 @@ for them to be built from source in the recipe.
    self-hosted note, Unpair with a confirm.
 6. Pocket (the wallet button, with its count): the deck, a card full screen,
    swipe a card away with Undo, open its thread, "Add to my pocket".
+7. Schedules (the bar's menu, backend API 45, Android only among the phones):
+   every runner's, grouped as the website's Scheduled page; tap one for its
+   message, its last run, Pause or Resume, and Run now.
 
 The inbox's search is always showing, and after a 300 ms pause asks Convex
 for archived threads past the newest 100 (`phone:search`). Rows swipe left

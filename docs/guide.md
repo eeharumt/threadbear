@@ -2148,6 +2148,9 @@ something already typed, it's added to the box instead, for you to send.
 Press and hold one to change or delete it, and tap + to add your own. They're
 kept on that phone.
 
+Schedules in the inbox's menu lists what your threads have scheduled. Tap one
+to read its message, pause or resume it, or run it now.
+
 ## Self-hosting your backend
 <!-- slug: self-hosting -->
 

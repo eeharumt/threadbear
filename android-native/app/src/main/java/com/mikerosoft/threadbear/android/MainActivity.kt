@@ -25,6 +25,7 @@ import com.mikerosoft.threadbear.android.ui.InboxScreen
 import com.mikerosoft.threadbear.android.ui.NewThreadScreen
 import com.mikerosoft.threadbear.android.ui.PocketScreen
 import com.mikerosoft.threadbear.android.ui.RunnerOrderScreen
+import com.mikerosoft.threadbear.android.ui.SchedulesScreen
 import com.mikerosoft.threadbear.android.ui.SettingsScreen
 import com.mikerosoft.threadbear.android.ui.LocalPageForward
 import com.mikerosoft.threadbear.android.ui.rememberPageForward
@@ -120,6 +121,7 @@ private fun Root(model: AppModel, openThread: MutableStateFlow<String?>) {
                     newThread = { nav.navigate("new") { launchSingleTop = true } },
                     settings = { nav.navigate("settings") { launchSingleTop = true } },
                     pocket = { nav.navigate("pocket") { launchSingleTop = true } },
+                    schedules = { nav.navigate("schedules") { launchSingleTop = true } },
                 )
             }
             composable("new") {
@@ -127,6 +129,7 @@ private fun Root(model: AppModel, openThread: MutableStateFlow<String?>) {
                 NewThreadScreen(close = { nav.popBackStack() })
             }
             composable("settings") { SettingsScreen(back = { nav.popBackStack() }, runnerOrder = { nav.navigate("settings/runners") }) }
+            composable("schedules") { SchedulesScreen(back = { nav.popBackStack() }, openThread = { nav.openThread(it) }) }
             composable("settings/runners") { RunnerOrderScreen(back = { nav.popBackStack() }) }
             composable("pocket") {
                 // Only once the Pocket's gone, as the iPhone's cover: the thread

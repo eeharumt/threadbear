@@ -72,6 +72,13 @@ class PhoneBackend(private val transport: ConvexTransport, private val token: St
 
     fun wakes(): Flow<List<ScheduleWake>> = live("phone:wakes", args()) { it.lossyList(ScheduleWake::read) }
 
+    /** Every runner's schedules, live. */
+    fun schedules(): Flow<List<PhoneSchedule>> = live("phone:schedules", args()) { it.lossyList(PhoneSchedule::read) }
+
+    /** Pauses, resumes or runs a schedule (backend API 45), on the runner it belongs to. */
+    suspend fun schedule(scheduleId: String, action: ScheduleAction): String =
+        command("phone:schedule", args("scheduleId" to JsonPrimitive(scheduleId), "action" to JsonPrimitive(action.wire)))
+
     /**
      * The inbox, read whole once and then only the rows written since
      * (backend API 43), so a phone left open doesn't read the whole list for

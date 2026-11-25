@@ -516,6 +516,8 @@ object BackendApi {
     const val ARCHIVE_VERDICT = 42
     const val THREAD_CHANGES = 43
     const val WAKES = 45
+    /** From 45 the phone can pause, resume and run a schedule (phone:schedule). */
+    const val SCHEDULES = 45
     const val WAITING_SENDS = 57
     const val STOP = 69
     const val STARS = 27
