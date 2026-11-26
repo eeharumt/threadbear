@@ -1,0 +1,26 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Threadbear Tauri",
+  "version": "0.1.0",
+  "identifier": "io.github.eeharumt.threadbear.tauri",
+  "build": {
+    "frontendDist": "https://example.invalid"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Threadbear Tauri",
+        "width": 1200,
+        "height": 800
+      }
+    ],
+    "security": {
+      "capabilities": []
+    }
+  },
+  "bundle": {
+    "active": true,
+    "icon": ["icons/icon.png", "icons/icon.ico"]
+  }
+}
