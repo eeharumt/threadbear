@@ -7,6 +7,7 @@
 //
 // Everything here runs real git. Nothing ever pushes.
 import { execFile, spawn } from 'node:child_process';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -988,9 +989,11 @@ async function holdLock(file: string, wait: boolean, stop?: AbortSignal): Promis
   // 75 is EX_TEMPFAIL for lockf, and explicitly chosen for flock. A
   // nonblocking try distinguishes contention from a slow Node startup.
   const args = mac ? ['-k', ...(wait ? [] : ['-t', '0'])] : ['-x', '-E', '75', ...(wait ? [] : ['-n'])];
-  const child = spawn(mac ? '/usr/bin/lockf' : 'flock', [...args, file, process.execPath, '-e', holder], {
-    stdio: ['pipe', 'pipe', 'pipe'],
-  });
+  const child = process.platform === 'win32'
+    ? spawn(process.execPath, ['-e', WINDOWS_LOCK_HOLDER, windowsLockPipe(file), wait ? '1' : '0'], { stdio: ['pipe', 'pipe', 'pipe'] })
+    : spawn(mac ? '/usr/bin/lockf' : 'flock', [...args, file, process.execPath, '-e', holder], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
   const closed = new Promise<void>((resolve) => child.once('close', () => resolve()));
   let errors = '';
   child.stderr.on('data', (d) => { errors += d; });
@@ -1019,6 +1022,30 @@ async function holdLock(file: string, wait: boolean, stop?: AbortSignal): Promis
     child.stdin.end();
     await closed;
   };
+}
+
+// Windows has no flock or lockf. Only one process can listen on a named
+// pipe, and Windows frees the name when that process ends, so listening
+// holds the lock as flock would, with the same 'locked' and exit 75.
+const WINDOWS_LOCK_HOLDER = `const [name, wait] = process.argv.slice(1);
+const take = () => {
+  const server = require('node:net').createServer();
+  server.once('error', (e) => {
+    if (e.code !== 'EADDRINUSE') { process.stderr.write(e.message); process.exit(1); }
+    if (wait !== '1') process.exit(75);
+    setTimeout(take, 250);
+  });
+  server.listen(name, () => {
+    process.stdin.resume();
+    process.stdin.on('end', () => process.exit(0));
+    process.stdout.write('locked');
+  });
+};
+take();`;
+
+function windowsLockPipe(file: string): string {
+  const key = crypto.createHash('sha256').update(path.resolve(file).toLowerCase()).digest('hex').slice(0, 32);
+  return `\\\\.\\pipe\\threadbear-lock-${key}`;
 }
 
 // Undefined when `gone` says, while it waits, that there's nothing to wait
