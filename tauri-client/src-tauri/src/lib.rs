@@ -9,9 +9,10 @@ pub fn run() {
             };
             if page.event() == PageLoadEvent::Finished && page.url().origin() == site.origin() {
                 let script = format!(
-                    "({})({:?})",
+                    "({})({:?}, {})",
                     include_str!("sign-in.js"),
                     site.origin().ascii_serialization(),
+                    cfg!(target_os = "android"),
                 );
                 let _ = webview.eval(script);
             }

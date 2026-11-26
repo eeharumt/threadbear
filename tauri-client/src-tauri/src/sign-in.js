@@ -1,4 +1,4 @@
-function installSignInForm(expectedOrigin) {
+function installSignInForm(expectedOrigin, isAndroid) {
   if (location.origin !== expectedOrigin) return;
 
   function addForm() {
@@ -18,6 +18,12 @@ function installSignInForm(expectedOrigin) {
     const submit = document.createElement('button');
     submit.type = 'submit';
     submit.textContent = 'Sign in to this app';
+    if (isAndroid) {
+      page.style.marginBlock = '24px';
+      Object.assign(form.style, { display: 'grid', gap: '12px', paddingBottom: '24px' });
+      Object.assign(input.style, { width: '100%', minWidth: '0', minHeight: '48px', fontSize: '16px' });
+      submit.style.minHeight = '48px';
+    }
     form.append(input, submit);
 
     input.addEventListener('input', () => input.setCustomValidity(''));

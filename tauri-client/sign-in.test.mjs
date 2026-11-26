@@ -7,7 +7,7 @@ const source = readFileSync(new URL('src-tauri/src/sign-in.js', import.meta.url)
 const origin = 'https://threadbear.example.com';
 const code = 'tbp_0123456789abcdef';
 
-function tryLink(link, pageOrigin = origin) {
+function tryLink(link, pageOrigin = origin, isAndroid = false) {
   let submit;
   let reloaded = false;
   const elements = {};
@@ -16,11 +16,13 @@ function tryLink(link, pageOrigin = origin) {
     reload() { reloaded = true; },
   };
   const history = { replaceState(_state, _unused, hash) { location.hash = hash; } };
+  const page = { append() {}, style: {} };
   const document = {
-    querySelector: (selector) => selector === 'main.signin' ? { append: () => {} } : null,
+    querySelector: (selector) => selector === 'main.signin' ? page : null,
     createElement(tag) {
       const element = {
         append() {},
+        style: {},
         addEventListener(name, callback) { if (name === 'submit') submit = callback; },
         setAttribute() {},
         setCustomValidity(message) { element.error = message; },
@@ -34,12 +36,15 @@ function tryLink(link, pageOrigin = origin) {
     document, history, location, URL, URLSearchParams,
     MutationObserver: class { observe() {} },
   });
-  install(origin);
+  install(origin, isAndroid);
   if (submit) {
     elements.input.value = link;
     submit({ preventDefault() {} });
   }
-  return { hash: location.hash, reloaded, error: elements.input?.error };
+  return {
+    hash: location.hash, reloaded, error: elements.input?.error,
+    ...(isAndroid && { inputStyle: elements.input.style, buttonStyle: elements.button.style }),
+  };
 }
 
 test('a same-origin one-use link is handed to the normal web sign-in', () => {
@@ -66,4 +71,11 @@ test('the form is never added to a page on another origin', () => {
   assert.deepEqual(tryLink(`${origin}/#code=${code}`, 'https://foreign.example.com'), {
     hash: '', reloaded: false, error: undefined,
   });
+});
+
+test('Android uses full-width sign-in controls large enough to tap', () => {
+  const result = tryLink(`${origin}/#code=${code}`, origin, true);
+  assert.equal(result.inputStyle.width, '100%');
+  assert.equal(result.inputStyle.minHeight, '48px');
+  assert.equal(result.buttonStyle.minHeight, '48px');
 });

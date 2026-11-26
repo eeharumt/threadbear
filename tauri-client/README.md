@@ -27,6 +27,9 @@ the Rust target `x86_64-linux-android` and add `-AndroidTarget x86_64`.
 All paths are relative to this directory. The build generates the icons and
 Android project locally.
 
+The build copies `android/MainActivity.kt` into the generated Android project.
+It reserves room for the system bars, display cutout, and software keyboard.
+
 To sign in, paste a one-time link for the same site into the app's sign-in form.
 Copy the link before opening it in another browser, since the link works once.
 

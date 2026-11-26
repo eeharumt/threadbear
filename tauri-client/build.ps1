@@ -38,6 +38,11 @@ try {
     if ($Platform -eq 'android' -and !(Test-Path 'src-tauri/gen/android/gradlew.bat')) {
         Invoke-Tauri android init --ci
     }
+    if ($Platform -eq 'android') {
+        Copy-Item -LiteralPath 'android/MainActivity.kt' -Destination (
+            'src-tauri/gen/android/app/src/main/java/io/github/eeharumt/threadbear/tauri/MainActivity.kt'
+        )
+    }
     Invoke-Tauri icon '../shared/icons/threadbear.png'
 
     @{ build = @{ frontendDist = $Site.AbsoluteUri } } |
