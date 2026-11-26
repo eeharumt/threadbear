@@ -12,3 +12,6 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = [] }
+
+[profile.dev]
+debug = 0

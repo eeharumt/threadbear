@@ -46,7 +46,7 @@ try {
     $flags = @('--config', $configPath)
     if ($DebugBuild) { $flags += '--debug' }
     if ($Platform -eq 'android') {
-        Invoke-Tauri android build --apk --target $AndroidTarget @flags
+        Invoke-Tauri android build --apk --split-per-abi --target $AndroidTarget @flags
     } elseif ($SkipInstaller) {
         Invoke-Tauri build --no-bundle @flags
     } else {
