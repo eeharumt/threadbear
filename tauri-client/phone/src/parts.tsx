@@ -16,9 +16,9 @@ export function ProjectTile({ picture, title, size = 38 }: { picture?: string; t
   );
 }
 
-export function IconButton({ name, label, onClick, size = 22, className = '' }: { name: LineName; label: string; onClick: () => void; size?: number; className?: string }) {
+export function IconButton({ name, label, onClick, size = 22, className = '', disabled }: { name: LineName; label: string; onClick: () => void; size?: number; className?: string; disabled?: boolean }) {
   return (
-    <button className={`icon-button ${className}`} onClick={onClick} aria-label={label} title={label}>
+    <button className={`icon-button ${className}`} onClick={onClick} aria-label={label} title={label} disabled={disabled}>
       <Icon name={name} size={size} />
     </button>
   );

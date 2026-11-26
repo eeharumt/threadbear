@@ -42,9 +42,25 @@ try {
         Invoke-Tauri android init --ci
     }
     if ($Platform -eq 'android') {
-        Copy-Item -LiteralPath 'android/MainActivity.kt' -Destination (
-            'src-tauri/gen/android/app/src/main/java/io/github/eeharumt/threadbear/tauri/MainActivity.kt'
-        )
+        Copy-Item -Path 'android/*.kt' -Destination 'src-tauri/gen/android/app/src/main/java/io/github/eeharumt/threadbear/tauri/'
+        # Dictation (android/Dictation.kt) needs the microphone, and to see
+        # the phone's speech recognizer, which Android 11 hides otherwise.
+        $manifest = Join-Path $PSScriptRoot 'src-tauri/gen/android/app/src/main/AndroidManifest.xml'
+        $xml = [IO.File]::ReadAllText($manifest)
+        if ($xml -notmatch 'RECORD_AUDIO') {
+            $internet = '<uses-permission android:name="android.permission.INTERNET" />'
+            if (!$xml.Contains($internet)) { throw "$manifest has no INTERNET permission to add the microphone's after." }
+            $xml = $xml.Replace($internet, $internet + @'
+
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <queries>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+    </queries>
+'@.TrimEnd())
+            [IO.File]::WriteAllText($manifest, $xml)
+        }
     }
     Invoke-Tauri icon '../shared/icons/threadbear.png'
 

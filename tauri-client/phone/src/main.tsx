@@ -5,11 +5,14 @@ import { ConvexError } from 'convex/values';
 import { InboxProvider } from '../../../web/src/inbox';
 import { LinkConfirm } from '../../../web/src/link-confirm';
 import { go, threadPath, useRoute } from '../../../web/src/route';
+import { openCover, useCover } from './cover';
 import { InboxScreen } from './inbox-screen';
 import { openOutside } from './links';
+import { NewThreadScreen } from './new-thread-screen';
 import { PairScreen } from './pair-screen';
 import { Empty, IconButton } from './parts';
 import { unpair, useSession, type Session } from './session';
+import { RunnerOrderScreen, SettingsScreen } from './settings-screen';
 import { ThreadScreen } from './thread-screen';
 import logo from '../../../android-native/app/src/main/res/drawable-nodpi/ic_launcher_fg.png';
 import './styles.css';
@@ -29,14 +32,16 @@ const back = () => (history.length > 1 ? history.back() : go('/'));
 function Paired({ session }: { session: Session }) {
   const client = useMemo(() => new ConvexReactClient(session.url), [session.url]);
   const route = useRoute();
+  const cover = useCover();
   const threadId = route.page === 'thread' ? route.threadId : undefined;
+  const close = () => history.back();
   return (
     <ConvexProvider client={client}>
       <Catch>
         <InboxProvider token={session.token}>
-          <div className={`panes ${threadId ? 'has-thread' : ''}`}>
+          <div className={`panes ${threadId ? 'has-thread' : ''}`} inert={cover ? true : undefined}>
             <section className="pane-list">
-              <InboxScreen token={session.token} open={(id) => go(threadPath(id))} selected={threadId} />
+              <InboxScreen token={session.token} open={(id) => go(threadPath(id))} selected={threadId} newThread={() => openCover('new')} settings={() => openCover('settings')} />
             </section>
             <section className="pane-thread">
               {threadId ? (
@@ -51,6 +56,21 @@ function Paired({ session }: { session: Session }) {
               )}
             </section>
           </div>
+          {cover === 'new' ? (
+            <div className="cover">
+              <NewThreadScreen token={session.token} close={close} />
+            </div>
+          ) : null}
+          {cover === 'settings' ? (
+            <div className="cover">
+              <SettingsScreen token={session.token} server={session.url} back={close} runnerOrder={() => openCover('runners')} />
+            </div>
+          ) : null}
+          {cover === 'runners' ? (
+            <div className="cover">
+              <RunnerOrderScreen token={session.token} back={close} />
+            </div>
+          ) : null}
         </InboxProvider>
       </Catch>
       <LinkConfirm />

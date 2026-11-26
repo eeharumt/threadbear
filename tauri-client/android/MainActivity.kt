@@ -3,6 +3,7 @@ package io.github.eeharumt.threadbear.tauri
 import android.os.Bundle
 import android.view.View
 import android.view.WindowManager
+import android.webkit.WebView
 import androidx.activity.enableEdgeToEdge
 import androidx.core.graphics.Insets
 import androidx.core.view.ViewCompat
@@ -23,5 +24,10 @@ class MainActivity : TauriActivity() {
             WindowInsetsCompat.Builder(insets).setInsets(reserved, Insets.NONE).build()
         }
         ViewCompat.requestApplyInsets(content)
+    }
+
+    // Dictation for the page, which a WebView has none of (Dictation.kt).
+    override fun onWebViewCreate(webView: WebView) {
+        webView.addJavascriptInterface(Dictation(this, webView), "threadbearDictation")
     }
 }

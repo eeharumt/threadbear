@@ -3,15 +3,16 @@
 One app for Windows and Android. It bundles its own screens from `phone/`, a
 port of the native Android app's screens (`android-native/`) drawn in React.
 They use the website's logic from `web/src` and talk to Convex directly with the
-phone API. Pairing, the inbox, and the thread screen (transcript, cards, reply
-box, and menu) are done.
+phone API. Pairing, the inbox, a new thread, Settings, and the thread screen
+(transcript, cards, reply box, photos, dictation, and menu) are done.
 
 The screens fit the window's width. Below 840px, they show the list or a thread,
 one at a time, as the phone does. From 840px, the list and the open thread sit
 side by side.
 
 Links out of a thread open in the system browser through the opener plugin. The
-`bundled` capability grants the screens only `opener:allow-open-url`.
+`bundled` capability grants the screens `opener:allow-open-url` and
+`core:app:default`, so Settings can read the app version.
 
 ## Build on Windows
 
@@ -66,7 +67,7 @@ $adb = "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe"
 & $adb shell "cp /system/etc/hosts /data/local/tmp/hosts && echo '<tailnet IP> <name>' >> /data/local/tmp/hosts && chcon u:object_r:system_file:s0 /data/local/tmp/hosts && mount --bind /data/local/tmp/hosts /system/etc/hosts"
 ```
 
-Android background push, the QR scanner, dictation, and photo upload need native
-integration before this can replace the native Android app.
+Android background push and the QR scanner still need native integration
+before this can replace the native Android app.
 
 [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)

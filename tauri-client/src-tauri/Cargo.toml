@@ -13,6 +13,13 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
+# Photo uploads (lib.rs, upload_photo): rustls with its own roots, as
+# tauri-plugin-http has it, which builds for Android with no system TLS.
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+
+[target.'cfg(windows)'.dependencies]
+# Windows voice typing (lib.rs, voice_typing).
+windows-sys = { version = "0.61", features = ["Win32_UI_Input_KeyboardAndMouse"] }
 
 [profile.dev]
 debug = 0

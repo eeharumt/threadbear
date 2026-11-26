@@ -1,5 +1,5 @@
-// The inbox, as the Android app's InboxScreen: a bar with the menu, the title
-// and its Needs you count, an always-showing search, then Starred, Inbox,
+// The inbox, as the Android app's InboxScreen: a bar with the menu (Settings),
+// the title and its Needs you count, a new thread, an always-showing search, then Starred, Inbox,
 // Running, Hibernating and Archived under headings that fold. Which rows go
 // where is the website's sections.ts; what a row says is row-status.ts.
 import { useState } from 'react';
@@ -21,7 +21,7 @@ type Runner = FunctionReturnType<typeof api.phone.runners>[number];
 const FOLDED_KEY = 'threadbear.phone.folded';
 const TITLES: Record<SectionKey, string> = { starred: 'Starred', inbox: 'Inbox', running: 'Running', hibernating: 'Hibernating', archived: 'Archived' };
 
-export function InboxScreen({ token, open, selected }: { token: string; open: (threadId: string) => void; selected?: string }) {
+export function InboxScreen({ token, open, selected, newThread, settings }: { token: string; open: (threadId: string) => void; selected?: string; newThread: () => void; settings: () => void }) {
   const inbox = useInbox();
   const counted = useLiveQuery(api.phone.counts, { token });
   const wakes = useLiveQuery(api.phone.wakes, { token });
@@ -59,6 +59,8 @@ export function InboxScreen({ token, open, selected }: { token: string; open: (t
       now={now}
       open={open}
       selected={selected}
+      newThread={newThread}
+      settings={settings}
     />
   );
 }
@@ -79,6 +81,9 @@ export type InboxViewProps = {
   open: (threadId: string) => void;
   // The thread open beside the list, in a wide window.
   selected?: string;
+  // The bar's New thread, and Settings in the menu. The demo leaves them out.
+  newThread?: () => void;
+  settings?: () => void;
 };
 
 export function InboxView(p: InboxViewProps) {
@@ -145,22 +150,27 @@ export function InboxView(p: InboxViewProps) {
           {menu ? (
             <Menu
               close={() => setMenu(false)}
-              items={[
-                {
-                  label: 'Unpair',
-                  icon: 'logOut',
-                  run: () => {
-                    if (confirm('Unpair this device? You will need a new code from your Mac to pair again.')) unpair();
-                  },
-                },
-              ]}
+              items={
+                p.settings
+                  ? [{ label: 'Settings', icon: 'settings', run: p.settings }]
+                  : [
+                      {
+                        label: 'Unpair',
+                        icon: 'logOut',
+                        run: () => {
+                          if (confirm('Unpair this device? You will need a new code from your Mac to pair again.')) unpair();
+                        },
+                      },
+                    ]
+              }
             />
           ) : null}
         </div>
-        <h1 className="top-title">
+        <h1 className="top-title grow">
           Threadbear
           {needsYou > 0 ? <span className="count-badge">{needsYou}</span> : null}
         </h1>
+        {p.newThread ? <IconButton name="squarePen" label="New thread" onClick={p.newThread} /> : null}
       </header>
       <SearchField query={p.query} change={p.setQuery} />
       <div className="scroll">
