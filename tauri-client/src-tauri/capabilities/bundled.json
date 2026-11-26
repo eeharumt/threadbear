@@ -1,0 +1,6 @@
+{
+  "identifier": "bundled",
+  "description": "The app's own screens (phone/) may open web pages and other apps' links outside it. A hosted site loaded as the frontend gets nothing: no remote URL is listed.",
+  "windows": ["main"],
+  "permissions": ["opener:allow-open-url"]
+}

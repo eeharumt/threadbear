@@ -1,23 +1,32 @@
 # Threadbear Tauri
 
-This project opens the same hosted Threadbear web app in WebView2 on Windows and
-in Android WebView. The web deployment owns the UI, sign-in, and Convex connection.
-The client has a separate application ID and grants the site no Tauri permissions.
+One app for Windows and Android. It bundles its own screens from `phone/`, a
+port of the native Android app's screens (`android-native/`) drawn in React.
+They use the website's logic from `web/src` and talk to Convex directly with the
+phone API. Pairing, the inbox, and the thread screen (transcript, cards, reply
+box, and menu) are done.
+
+The screens fit the window's width. Below 840px, they show the list or a thread,
+one at a time, as the phone does. From 840px, the list and the open thread sit
+side by side.
+
+Links out of a thread open in the system browser through the opener plugin. The
+`bundled` capability grants the screens only `opener:allow-open-url`.
 
 ## Build on Windows
 
 Install Node.js, Rust, the MSVC C++ build tools, and WebView2. For Android, also
 install a JDK, the Android SDK and an NDK. Set `JAVA_HOME`, `ANDROID_HOME`, and
 `NDK_HOME` for the build shell. Run these commands from the repository root with
-PowerShell and replace the example origin with your own Threadbear web origin.
+PowerShell.
 
 ```powershell
-$site = 'https://threadbear.example.com'
+npm ci
 npm ci --prefix tauri-client
-./tauri-client/build.ps1 -Platform windows -Site $site
+./tauri-client/build.ps1 -Platform windows
 
 rustup target add aarch64-linux-android
-./tauri-client/build.ps1 -Platform android -Site $site -DebugBuild
+./tauri-client/build.ps1 -Platform android -DebugBuild
 ```
 
 The Windows installer is under `src-tauri/target/release/bundle/nsis/`.
@@ -30,11 +39,34 @@ Android project locally.
 The build copies `android/MainActivity.kt` into the generated Android project.
 It reserves room for the system bars, display cutout, and software keyboard.
 
-To sign in, paste a one-time link for the same site into the app's sign-in form.
-Copy the link before opening it in another browser, since the link works once.
+Pair by pasting the pairing code from the Mac's Settings, Phone & browser. A
+website sign-in link also works if the build was given the Convex deployment it
+belongs to with `-ConvexUrl`.
 
-The prototype shares the functionality available on the web. Android background
-push and any other native-only flows need separate integration and testing before
-this can replace the native Android app.
+## Develop
+
+`npm run tauri dev`, run in this directory, opens the app on Windows with the
+screens served by Vite, so a change to them shows at once.
+
+To look at the screens in a browser, run
+`npx vite --config tauri-client/phone/vite.config.mts` from the repository root.
+Open `/demo.html` to see the inbox with sample rows and no server. Add `?thread`
+to open a thread, and `&card=asks`, `approval`, or `working` to change what it
+waits on. Make the window wider than 840px to see both panes.
+After the native app's `Icons.kt` or `ShellIcons.kt` changes, run
+`node tauri-client/phone/scripts/icons.mjs` to regenerate the icons.
+
+The Android emulator can't resolve tailnet names such as `*.ts.net`. To reach a
+self-hosted backend on the tailnet from an emulator with a Google APIs image,
+add the name to its hosts file after each boot:
+
+```powershell
+$adb = "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe"
+& $adb root; & $adb wait-for-device
+& $adb shell "cp /system/etc/hosts /data/local/tmp/hosts && echo '<tailnet IP> <name>' >> /data/local/tmp/hosts && chcon u:object_r:system_file:s0 /data/local/tmp/hosts && mount --bind /data/local/tmp/hosts /system/etc/hosts"
+```
+
+Android background push, the QR scanner, dictation, and photo upload need native
+integration before this can replace the native Android app.
 
 [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)

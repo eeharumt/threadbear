@@ -1,10 +1,13 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Threadbear Tauri",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "identifier": "io.github.eeharumt.threadbear.tauri",
   "build": {
-    "frontendDist": "https://example.invalid"
+    "frontendDist": "../phone/dist",
+    "devUrl": "http://localhost:5182",
+    "beforeDevCommand": "node ../node_modules/vite/bin/vite.js --config phone/vite.config.mts",
+    "beforeBuildCommand": "node ../node_modules/vite/bin/vite.js build --config phone/vite.config.mts"
   },
   "app": {
     "windows": [
@@ -16,11 +19,16 @@
       }
     ],
     "security": {
-      "capabilities": []
+      "capabilities": [
+        "bundled"
+      ]
     }
   },
   "bundle": {
     "active": true,
-    "icon": ["icons/icon.png", "icons/icon.ico"]
+    "icon": [
+      "icons/icon.png",
+      "icons/icon.ico"
+    ]
   }
 }

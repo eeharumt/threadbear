@@ -24,6 +24,7 @@ import { previewOf, ShareControl, SharePage } from './share';
 import { busy, Lists, ResizeHandle, type Row, useSidebarWidth } from './sidebar';
 import { Pop } from './menu';
 import { pastedOf } from './picture-chips';
+import { answerMessage, choices, followUpMessage } from './decisions';
 import { Rail } from './rail';
 // Loaded only when it's opened: the viewer's diagrams are most of its size.
 const MachinesPage = lazy(() => import('./machines'));
@@ -35,7 +36,6 @@ import { ReviewRow } from './review-row';
 import { reviewSeq, type LabReviewLedger } from './lab-review';
 
 type Approval = NonNullable<Row['pendingApproval']>;
-type Ask = NonNullable<Row['asks']>[number];
 
 export function App() {
   const token = useToken();
@@ -649,29 +649,6 @@ function Dock({ token, thread: t, lastSeq, onArchive, archiving, linkTo }: { tok
     </div>
     </>
   );
-}
-
-// What an ask offers: its options, else the reply it wants ("done").
-function choices(a: Ask): string[] {
-  if (a.options?.length) return a.options;
-  return a.reply?.trim() ? [a.reply.trim()] : [];
-}
-
-// The message the Mac sends for picked asks (Decisions.message): each
-// question then its answer, numbered when the card had several, then
-// anything else typed.
-function answerMessage(count: number, answers: { index: number; action: string; answer: string }[], extra: string): string {
-  const parts = answers.map((a) => (count === 1 ? `${a.action}\n${a.answer}` : `${a.index + 1}. ${a.action}\n   ${a.answer.replace(/\n/g, '\n   ')}`));
-  if (extra) parts.push(extra);
-  return parts.join('\n\n');
-}
-
-// Ticked follow-ups (Decisions.followUpMessage): one on its own, several as
-// a list, then anything else typed.
-function followUpMessage(follow: string[], extra: string): string {
-  let body = follow.length === 1 ? follow[0]! : follow.map((f) => `- ${f}`).join('\n');
-  if (extra) body += `\n\n${extra}`;
-  return body;
 }
 
 // Keyed on the approval, so a new one starts with nothing pressed. Once its

@@ -3,8 +3,9 @@ param(
     [ValidateSet('windows', 'android')]
     [string]$Platform,
 
-    [Parameter(Mandatory)]
-    [uri]$Site,
+    # Optional: the Convex deployment a pasted website sign-in link pairs
+    # with. The Mac's pairing code names its own deployment.
+    [uri]$ConvexUrl,
 
     [switch]$DebugBuild,
     [switch]$SkipInstaller,
@@ -14,9 +15,9 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-if (!$Site.IsAbsoluteUri -or $Site.Scheme -ne 'https' -or $Site.UserInfo -or
-    $Site.Query -or $Site.Fragment -or $Site.AbsolutePath -ne '/') {
-    throw 'Site must be the HTTPS origin of your hosted Threadbear web app.'
+if ($ConvexUrl -and (!$ConvexUrl.IsAbsoluteUri -or $ConvexUrl.Scheme -ne 'https' -or $ConvexUrl.UserInfo -or
+    $ConvexUrl.Query -or $ConvexUrl.Fragment -or $ConvexUrl.AbsolutePath -ne '/')) {
+    throw "$ConvexUrl must be an HTTPS origin."
 }
 if ($SkipInstaller -and $Platform -ne 'windows') {
     throw 'SkipInstaller applies to Windows builds only.'
@@ -29,11 +30,13 @@ function Invoke-Tauri {
     }
 }
 
-$configPath = Join-Path ([IO.Path]::GetTempPath()) "threadbear-tauri-$([guid]::NewGuid()).json"
 Push-Location $PSScriptRoot
 try {
     if (!(Test-Path 'node_modules/.bin/tauri.cmd')) {
         throw 'Run npm ci --prefix tauri-client from the repository root first.'
+    }
+    if (!(Test-Path '../node_modules/vite')) {
+        throw 'The screens build with the repository''s own packages: run npm ci at the repository root first.'
     }
     if ($Platform -eq 'android' -and !(Test-Path 'src-tauri/gen/android/gradlew.bat')) {
         Invoke-Tauri android init --ci
@@ -45,10 +48,9 @@ try {
     }
     Invoke-Tauri icon '../shared/icons/threadbear.png'
 
-    @{ build = @{ frontendDist = $Site.AbsoluteUri } } |
-        ConvertTo-Json -Compress | Set-Content -LiteralPath $configPath -Encoding utf8
-
-    $flags = @('--config', $configPath)
+    # The screens (phone/), built by tauri.conf.json's beforeBuildCommand.
+    $env:VITE_CONVEX_URL = if ($ConvexUrl) { $ConvexUrl.AbsoluteUri.TrimEnd('/') } else { '' }
+    $flags = @()
     if ($DebugBuild) { $flags += '--debug' }
     if ($Platform -eq 'android') {
         Invoke-Tauri android build --apk --split-per-abi --target $AndroidTarget @flags
@@ -58,6 +60,5 @@ try {
         Invoke-Tauri build --bundles nsis @flags
     }
 } finally {
-    Remove-Item -LiteralPath $configPath -ErrorAction SilentlyContinue
     Pop-Location
 }
