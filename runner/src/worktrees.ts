@@ -12,6 +12,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { realPath } from './platform.ts';
+import { gitBash } from './system-tools.ts';
 import type { WorktreePatch } from './patches.ts';
 import { inBackground } from './background.ts';
 import { mainCheckoutOf as linkedMainCheckout } from './patch-trust.ts';
@@ -2597,7 +2598,12 @@ export function overwrittenFiles(text: string): string[] {
 // the runner's self-update has it (runner/scripts/deploy-steps.mjs).
 export const CHECK_HOSTS_UNAVAILABLE = 69;
 
-function runCheck(command: string, cwd: string, shell = ['/bin/sh', '-c'], extraEnv: NodeJS.ProcessEnv = {}, limitMs?: number): Promise<{ ok: boolean; code?: number; text: string; durationMs: number; stopped?: boolean }> {
+// Windows has no /bin/sh: the check runs in Git for Windows' bash there.
+function checkShell(): string[] {
+  return process.platform === 'win32' ? [gitBash() ?? 'bash', '-c'] : ['/bin/sh', '-c'];
+}
+
+function runCheck(command: string, cwd: string, shell = checkShell(), extraEnv: NodeJS.ProcessEnv = {}, limitMs?: number): Promise<{ ok: boolean; code?: number; text: string; durationMs: number; stopped?: boolean }> {
   const started = Date.now();
   // At background priority: a land's check is the full quick suite.
   const [bin, args] = inBackground(shell[0], [...shell.slice(1), command]);
