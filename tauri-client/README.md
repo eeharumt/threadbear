@@ -44,6 +44,9 @@ Pair by pasting the pairing code from the Mac's Settings, Phone & browser. A
 website sign-in link also works if the build was given the Convex deployment it
 belongs to with `-ConvexUrl`.
 
+On Windows, open the View menu to choose a zoom level between 80% and 150%.
+Choose 100% (Actual size) to reset it.
+
 ## Develop
 
 `npm run tauri dev`, run in this directory, opens the app on Windows with the

@@ -1,5 +1,8 @@
 use tauri::ipc::{InvokeBody, Request};
 
+#[cfg(windows)]
+mod view_menu;
+
 /// The most a photo can be (convex/phone.ts, PHONE_UPLOADS.maxBytes).
 const MAX_PHOTO_BYTES: usize = 10 * 1024 * 1024;
 
@@ -63,7 +66,10 @@ fn voice_typing() -> Result<(), String> {
 pub fn run() {
     let builder = tauri::Builder::default().plugin(tauri_plugin_opener::init());
     #[cfg(windows)]
-    let builder = builder.invoke_handler(tauri::generate_handler![upload_photo, voice_typing]);
+    let builder = builder
+        .menu(view_menu::build)
+        .on_menu_event(view_menu::handle_event)
+        .invoke_handler(tauri::generate_handler![upload_photo, voice_typing]);
     #[cfg(not(windows))]
     let builder = builder.invoke_handler(tauri::generate_handler![upload_photo]);
     builder.run(tauri::generate_context!()).expect("could not start Threadbear");
