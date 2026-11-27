@@ -61,6 +61,8 @@ Tauri で Windows と Android を一つにまとめた版は、2026年11月27日
 
 - **改行コード:** このリポジトリでは `git config core.autocrlf false` にしてある。Git for Windows は既定で改行を CRLF にして取り出すが、このリポジトリのツールは LF を前提にしている（ウェブサイトのビルドが止まった、2026年11月27日）。新しく clone したら、同じ設定をしてから取り出し直す。
 - **偽の `.git` フォルダ:** Cursor が、ホームフォルダや `AppData\Local` に検索の索引だけを入れた `.git` を作ることがある。あると、ランナーがその下のフォルダを git のリポジトリと思い込み、テストが落ちる。見つけたら脇へ移す。
-- **デスクトップアプリ:** `desktop/` で `cargo build --release -p threadbear-gpui` を走らせ、`threadbear-gpui.exe` と `threadbear-web-helper.exe` を `\192.168.11.22\ssd\software\threadbear-windows\` に置く。各 PC では、そこにある `install.cmd` を実行すると入る。フォーク元の自動更新は Mac だけで、Windows では更新しない。
+- **デスクトップアプリ:** `desktop/` で `cargo build --release -p threadbear-gpui` を走らせ、`threadbear-gpui.exe` と `threadbear-web-helper.exe` を `\192.168.11.22\ssd\software\threadbear-windows\` に置く。各 PC では、そこにある `install.cmd` を実行すると入る。フォーク元の自動更新は Mac だけなので、Windows は自分で更新する。
+  - **更新ボタン:** DESKTOP-01 の Threadbear では、`C:\Users\mossa\Projects` のスレッドのメッセージ欄の上に「Windows アプリを更新」ボタンがある。押すと、GitHub の main からビルドして NAS に置き、`install.cmd /quiet` でアプリを入れ替えて開き直す（ビルド済みのものがあれば十数秒、初回は数分）。ボタンは `C:\Users\mossa\Projects\.threadbear\patches\windows-app.ts`、中身は `~/.threadbear/windows-app-update.sh`、経過は `%LOCALAPPDATA%\Threadbear\Logs\windows-app-update.log` に出る。どれもリポジトリの外にある。パッチを `~/.threadbear/patches` に置かないのは、Windows では一時フォルダがホームの下にあり、ランナーのテストがそのパッチを拾って落ちるから。
+  - **ほかの PC（GEN-WS）:** ボタンで更新したあと、NAS の `install.cmd` を実行すると同じ版になる。NAS の `version.txt` に、いま置いてある版のコミットが書いてある。
 - **Android アプリ:** `android-native/` で、JDK 17（mise の temurin）と Android SDK を使って `./gradlew.bat --no-daemon :app:assembleFdroidRelease -PthreadbearFork=eeharu -PthreadbearRelease=<日付>` を走らせる。`~/.config/threadbear-android/release.jks` の鍵で署名されるので、入っている版に上書きできる。通知はスマホの ntfy（UnifiedPush）経由で届く。
 - **スマホのペアリング:** メインのランナーは GEN-WS にあり、QR はそこでしか出せない。
