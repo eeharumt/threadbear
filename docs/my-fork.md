@@ -52,3 +52,4 @@ Tauri で Windows と Android を一つにまとめた版は、2026年11月27日
 | Android の Schedules 画面 | `android-native/` | `358502ef` |
 | フォーク版の Android アプリのアイコンを青緑にする | `android-native/` | `697278fc` |
 | Windows で `tb land` を動かす | `runner/` | `144032ea`、`aba788f6` |
+| Windows の `check.sh` で、Windows で落ちると分かっているテストを外す（`tb land` が1時間超から数分に） | `check.sh`、`runner/test/unit/win-acl.test.ts` | 「Leave the tests known to fail on Windows out of its check」 |

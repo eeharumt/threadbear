@@ -603,10 +603,35 @@ runner_unit_tests() {
       return
     fi
   fi
+  # On Windows (Git Bash), the files test/windows-known-failing.txt lists
+  # are left out, as scripts/test-windows.mjs and CI's windows job leave
+  # them out of the hard check. Run here, several wait out the 300 s
+  # timeout one test at a time, and tb land took over an hour (27 Nov 2026).
+  local note=""
+  case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*)
+    if [ -f "$dir/test/windows-known-failing.txt" ]; then
+      local all=() kept=() known="$LOGS/windows-known-failing.paths"
+      sed -e 's/\r$//' -e 's/#.*//' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' "$dir/test/windows-known-failing.txt" \
+        | grep . | sed 's|^|test/unit/|' >"$known"
+      if [ "${targets[0]}" = "test/unit/**/*.test.ts" ]; then
+        while IFS= read -r f; do all+=("$f"); done < <(cd "$dir" && find test/unit -name '*.test.ts' -type f | LC_ALL=C sort)
+      else
+        all=("${targets[@]}")
+      fi
+      while IFS= read -r f; do [ -n "$f" ] && kept+=("$f"); done < <(printf '%s\n' "${all[@]}" | grep -vxF -f "$known")
+      if [ "${#kept[@]}" = 0 ]; then
+        printf 'skip  %-20s (every file asked for is in test/windows-known-failing.txt)\n' "$name"
+        return
+      fi
+      [ "${#kept[@]}" = "${#all[@]}" ] || note="  (left out $((${#all[@]} - ${#kept[@]})) files test/windows-known-failing.txt lists)"
+      targets=("${kept[@]}")
+    fi
+    ;;
+  esac
   # Test files that passed before with what they read now (their imports
   # and the files they and the scripts they run name, scripts/check-cache.mjs)
   # are left out, and the ones that run are recorded as they pass.
-  local keys="$LOGS/runner-unit-tests.keys" passed="$LOGS/runner-unit-tests.passed" note="" record=()
+  local keys="$LOGS/runner-unit-tests.keys" passed="$LOGS/runner-unit-tests.passed" record=()
   if [ -n "$PASSES" ]; then
     local listed=() ran=() verdict key skipped=0
     if [ "${targets[0]}" = "test/unit/**/*.test.ts" ]; then
@@ -633,7 +658,7 @@ runner_unit_tests() {
       targets=("${ran[@]}")
       record=(--test-reporter=./test/helpers/passed-files-reporter.mjs --test-reporter-destination="$passed")
       if [ "$skipped" -gt 0 ]; then
-        note="  (skipped $skipped test files that passed with what they read now)"
+        note="$note  (skipped $skipped test files that passed with what they read now)"
         # Which ran, when that's few enough to read.
         [ "${#ran[@]}" -gt 20 ] || note="$note
         ran: ${ran[*]}"

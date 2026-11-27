@@ -43,7 +43,10 @@ test('for real: grants made before are gone, from the folder and what was in it'
   fs.mkdirSync(secrets, { recursive: true });
   const key = path.join(secrets, 'key');
   fs.writeFileSync(key, 'k');
-  const me = /"(S-1-[\d-]+)"/.exec(execFileSync('whoami', ['/user', '/fo', 'csv', '/nh'], { encoding: 'utf8', windowsHide: true }))![1]!;
+  // Windows' own whoami: in Git Bash, as check.sh runs, a bare `whoami` is
+  // Git's, which refuses /user.
+  const whoami = path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'whoami.exe');
+  const me = /"(S-1-[\d-]+)"/.exec(execFileSync(whoami, ['/user', '/fo', 'csv', '/nh'], { encoding: 'utf8', windowsHide: true }))![1]!;
   // Everyone may read the folder, and the file has a list of its own that
   // inherits nothing, with Everyone on it too (Codex's review, 18 Nov 2026).
   icacls(secrets, '/grant', '*S-1-1-0:(OI)(CI)R');
