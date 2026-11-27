@@ -143,9 +143,6 @@ pub struct Threadbear {
     pub(crate) busy_notes: Vec<(String, String)>,
     pub(crate) done_note: Option<String>,
     pub(crate) done_task: Option<Task<()>>,
-    /// CLI updates that failed and were dismissed from the banner, by
-    /// `cli_failure_key` (`dismissedCliFailures`).
-    pub(crate) dismissed_cli_failures: HashSet<String>,
     /// Asks `runner.status` which threads a pending restart waits for, as
     /// they finish, once for a burst of updates (`refreshRunnerStatus`).
     pub(crate) restart_status_task: Option<Task<()>>,
@@ -603,7 +600,6 @@ impl Threadbear {
             busy_notes: Vec::new(),
             done_note: None,
             done_task: None,
-            dismissed_cli_failures: HashSet::new(),
             restart_status_task: None,
             creating_investigation: false,
             renaming: None,

@@ -649,13 +649,13 @@ test('compareVersions orders releases and pre-releases', () => {
   assert.deepEqual([...vs].sort(compareVersions), ['0.99.1', '0.164.0', '0.165.0-alpha.2', '0.165.0-alpha.10', '0.165.0', '1.0.0']);
 });
 
-function acpSetup(o: { missing?: boolean; env?: NodeJS.ProcessEnv; version?: () => string; fail?: boolean } = {}) {
+function acpSetup(o: { missing?: boolean; env?: NodeJS.ProcessEnv; version?: () => string; fail?: boolean; failOutput?: string } = {}) {
   const calls: string[][] = [];
   const exec: Exec = async (cmd, args) => {
     if (cmd === '/bin/opencode') {
       calls.push(args);
       if (args[0] === '--version') return { code: 0, stdout: `${(o.version ?? (() => '1.0.0'))()}\n`, stderr: '' };
-      return o.fail ? { code: 1, stdout: '', stderr: 'no network\n' } : { code: 0, stdout: '', stderr: '' };
+      return o.fail ? { code: 1, stdout: '', stderr: o.failOutput ?? 'no network\n' } : { code: 0, stdout: '', stderr: '' };
     }
     return { code: 1, stdout: '', stderr: '' };
   };
@@ -726,6 +726,22 @@ test('a failed update says why', async () => {
   const row = c.u.list().find((r) => r.provider === 'opencode')!;
   assert.equal(row.update?.state, 'failed');
   assert.match(String(row.update?.message), /no network/);
+});
+
+test('a failed update that prints in colour says why without the escapes', async () => {
+  const c = acpSetup({ fail: true, failOutput: '\u001b[90m┌\u001b[39m  Upgrade\n\u001b[90m│\u001b[39m\n\u001b[31m■\u001b[39m  npm exited with EACCES\r\n\u001b[90m—\u001b[39m Failed\n' });
+  c.u.update('opencode');
+  await c.u.settled();
+  const message = String(c.u.list().find((r) => r.provider === 'opencode')!.update?.message);
+  assert.equal(message, 'npm exited with EACCES');
+});
+
+test('a failed update on Windows, where letters stand in for the box characters, says why', async () => {
+  const c = acpSetup({ fail: true, failOutput: '\u001b[90mT\u001b[39m  Upgrade\n\u001b[90m|\u001b[39m\n\u001b[31mx\u001b[39m  Could not detect the installation method.\n\u001b[90m|\u001b[39m\n\u001b[90m—\u001b[39m  Failed\n\n' });
+  c.u.update('opencode');
+  await c.u.settled();
+  const message = String(c.u.list().find((r) => r.provider === 'opencode')!.update?.message);
+  assert.equal(message, 'Could not detect the installation method.');
 });
 
 test('THREADBEAR_CLI_UPDATES=off covers them too', async () => {

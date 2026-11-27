@@ -1179,7 +1179,7 @@ impl Threadbear {
             };
             if update.state == "failed" {
                 let key = cli_failure_key(cli);
-                if self.dismissed_cli_failures.contains(&key) {
+                if self.new_thread.prefs.dismissed_cli_failures.contains(&key) {
                     continue;
                 }
                 return Some(Banner {
@@ -1278,7 +1278,14 @@ impl Threadbear {
                             "Hide this until it happens again"
                         )
                         .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
-                            this.dismissed_cli_failures.insert(key.clone());
+                            let dismissed = &mut this.new_thread.prefs.dismissed_cli_failures;
+                            if !dismissed.contains(&key) {
+                                // One per CLI: an older failure can't come back.
+                                let provider = key.split('|').next().unwrap_or_default();
+                                dismissed.retain(|k| k.split('|').next() != Some(provider));
+                                dismissed.push(key.clone());
+                                crate::prefs::save(&this.new_thread.prefs);
+                            }
                             cx.notify();
                         }))
                         .child("Dismiss"),

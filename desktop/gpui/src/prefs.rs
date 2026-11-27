@@ -24,6 +24,9 @@ pub struct Prefs {
     /// The message box's spelling and substitution switches, from its
     /// right-click menu (composer_spelling.rs).
     pub text_checks: crate::text_services::Checks,
+    /// The failed CLI updates whose banner was dismissed, by
+    /// `cli_failure_key`, so a restart doesn't bring them back.
+    pub dismissed_cli_failures: Vec<String>,
 }
 
 fn path() -> PathBuf {

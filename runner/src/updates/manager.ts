@@ -350,7 +350,7 @@ export class CliUpdates {
     const now = this.installed[p];
     if (r.code !== 0) {
       this.history.append({ at: this.iso(), provider: p, action: 'update', ok: false, message: 'failed', output: r.stderr || r.stdout });
-      return this.finish(p, { state: 'failed', message: (r.stderr || r.stdout).trim().split('\n').at(-1)?.slice(0, 200) || `${cliName(p)} didn't update.` });
+      return this.finish(p, { state: 'failed', message: failureLine(r.stderr || r.stdout) || `${cliName(p)} didn't update.` });
     }
     this.history.append({ at: this.iso(), provider: p, action: 'update', ok: true, ...(now ? { version: now } : {}), message: `from ${before ?? 'unknown'}` });
     this.finish(p, { state: now && now !== before ? 'succeeded' : 'unchanged', ...(now ? { targetVersion: now } : {}) });
@@ -793,6 +793,23 @@ export class CliUpdates {
   private iso(): string {
     return new Date(this.d.clock.now()).toISOString();
   }
+}
+
+// The line of an updater's output that says why it failed, as plain text.
+// Updaters draw in colour and box characters (on Windows, letters such as
+// "x" and "T" stand in for them, set off by two spaces), and often end on a
+// bare "Failed" after the line with the reason.
+export function failureLine(output: string): string {
+  const lines = output
+    // eslint-disable-next-line no-control-regex
+    .replace(/\u001b(?:\[[0-?]*[ -/]*[@-~]|\][^\u0007\u001b]*(?:\u0007|\u001b\\)|[@-Z\\-_])/g, '')
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u0009\u000b-\u001f\u007f]/g, '')
+    .split('\n')
+    .map((l) => l.replace(/^[^\p{L}\p{N}]+/u, '').replace(/^\S {2,}/, '').trim())
+    .filter(Boolean);
+  const line = lines.findLast((l) => /\s/.test(l)) ?? lines.at(-1) ?? '';
+  return line.slice(0, 200);
 }
 
 function stripUndefined<T extends Record<string, unknown>>(o: T): T {
