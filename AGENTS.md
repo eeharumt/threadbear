@@ -4,6 +4,9 @@ Threadbear is Mike's own agent app: a runner driving the official Claude Code an
 CLIs, and apps that talk to it. This file is the traps to avoid; each job's how-to is in
 the doc that owns it ("Doing X? Read Y"). Put detail there and link it, not here.
 
+This fork (eeharumt): read docs/my-fork.md before changing any app. It says which apps
+this fork uses and how its own changes go in.
+
 - `runner/`: the runner (runner/README.md). The contract between it and the apps is
   docs/protocol/, a file per area; `docs/protocol.md` says which section is in which.
 - `desktop/`: the GPUI app for Mac, Windows and Linux, the one Mike uses
