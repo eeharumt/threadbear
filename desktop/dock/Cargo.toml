@@ -23,6 +23,16 @@ unicode-properties = { version = "=0.1.3", optional = true }
 objc2 = "=0.6.5"
 raw-window-handle = "=0.6.2"
 
+# A system title bar, and a caption drag where GPUI's start_window_move does
+# nothing (src/platform.rs). The same `windows` crate GPUI already builds.
+[target.'cfg(target_os = "windows")'.dependencies]
+raw-window-handle = "=0.6.2"
+windows = { version = "=0.62.2", features = [
+    "Win32_Foundation",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_Input_KeyboardAndMouse",
+] }
+
 [features]
 # The demo's scripted control and screenshots (src/bin/dock-demo.rs), like
 # desktop/gpui's `automation`: test helpers that really exercise the window.

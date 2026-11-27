@@ -54,6 +54,7 @@ Tauri で Windows と Android を一つにまとめた版は、2026年11月27日
 | Windows で `tb land` を動かす | `runner/` | `144032ea`、`aba788f6` |
 | Windows の `check.sh` で、Windows で落ちると分かっているテストを外す（`tb land` が1時間超から数分に） | `check.sh`、`runner/test/unit/win-acl.test.ts` | `6f2a558d` |
 | Windows の `check.sh` で、デスクトップのチェックを cargo で直接動かし、Windows のコードに lint をかけない（フォーク元も Windows は lint の対象外） | `check.sh` | 「Run the desktop checks on Windows」 |
+| Windows のデスクトップアプリにシステムのタイトルバーを出す。パネルのバーをドラッグしたときもウィンドウが動く | `desktop/dock/src/platform.rs`、`desktop/gpui/` | 「Show the system title bar on the Windows desktop app」 |
 
 ## Windows で作業するとき
 

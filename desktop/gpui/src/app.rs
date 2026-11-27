@@ -317,6 +317,8 @@ impl Threadbear {
         reason = "baselined at 342 lines when the lint was turned on (20 Nov 2026); split it when it's next worked on"
     )]
     pub(crate) fn new(settings: Settings, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        // Windows has no caption until this asks for one (dock's platform.rs).
+        threadbear_dock::platform::install_system_title_bar(window);
         let mut settings = settings;
         if settings.saved.thread_milestone_shown.is_none()
             && crate::installed::launch().installed

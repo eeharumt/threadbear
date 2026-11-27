@@ -1176,7 +1176,7 @@ impl ReviewWindow {
                 if e.click_count == 2 {
                     window.zoom_window();
                 } else {
-                    window.start_window_move();
+                    threadbear_dock::platform::start_window_move(window);
                 }
             })
             .child(div().flex_none().w(gpui_kit::px(TITLE_X)))

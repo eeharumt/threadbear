@@ -498,7 +498,7 @@ impl FloatingPanelView {
                 p.mode = FloatMode::WindowMove;
                 p._timer = None;
                 if p.grab.is_none() {
-                    window.start_window_move();
+                    platform::start_window_move(window);
                 }
             }
         }

@@ -420,13 +420,15 @@ fn main() {
         let (window, app) = gpui_kit::open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
-                // No title bar: the panels' bars are the top of the window,
-                // with the traffic lights over the top-left panel's bar and
-                // the bars moving the window (ThreadbearApp, BearDock's
-                // README says what a hosting window must set).
+                // No title bar on the Mac: the panels' bars are the top of the
+                // window, with the traffic lights over the top-left panel's
+                // bar and the bars moving the window (ThreadbearApp, BearDock's
+                // README says what a hosting window must set). On Windows that
+                // leaves nothing to drag, and GPUI never creates a caption, so
+                // the system title bar is drawn instead (dock's platform.rs).
                 titlebar: Some(TitlebarOptions {
                     title: Some("Threadbear".into()),
-                    appears_transparent: true,
+                    appears_transparent: cfg!(not(windows)),
                     traffic_light_position: Some(point(px(9.), px(10.))),
                 }),
                 app_owns_titlebar_drag: true,

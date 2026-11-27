@@ -7419,6 +7419,7 @@ dependencies = [
  "taffy",
  "threadbear-dock-layout",
  "unicode-properties",
+ "windows 0.62.2",
 ]
 
 [[package]]

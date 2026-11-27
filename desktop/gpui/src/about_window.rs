@@ -88,7 +88,9 @@ impl Threadbear {
                     window_bounds: Some(WindowBounds::Windowed(bounds)),
                     titlebar: Some(TitlebarOptions {
                         title: Some("About Threadbear".into()),
-                        appears_transparent: true,
+                        // The Mac keeps the transparent bar. Windows would
+                        // otherwise have no caption and no drag (platform.rs).
+                        appears_transparent: cfg!(not(windows)),
                         traffic_light_position: None,
                     }),
                     focus: !scripted,
@@ -98,6 +100,7 @@ impl Threadbear {
                     ..Default::default()
                 },
                 |window, cx| {
+                    threadbear_dock::platform::install_system_title_bar(window);
                     window.on_window_should_close(cx, |_, cx| {
                         cx.set_global(AboutWindow(None));
                         true

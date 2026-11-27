@@ -76,7 +76,10 @@ pub(crate) fn open(block: &RichBlock, window: &mut Window, cx: &mut App) {
                 ..Default::default()
             },
             cx,
-            move |window, cx| cx.new(|cx| RichWindow::new(block, window, cx)),
+            move |window, cx| {
+                threadbear_dock::platform::install_system_title_bar(window);
+                cx.new(|cx| RichWindow::new(block, window, cx))
+            },
         );
         if let Ok((handle, _)) = opened {
             store.update(cx, |s, cx| {

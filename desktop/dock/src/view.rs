@@ -484,7 +484,7 @@ impl DockView {
                 if mode == PressMode::Window
                     && self.press.as_ref().is_some_and(|p| p.grab.is_none())
                 {
-                    window.start_window_move();
+                    platform::start_window_move(window);
                 }
             }
         }
@@ -1113,7 +1113,7 @@ impl DockView {
                         if e.click_count == 2 {
                             window.zoom_window();
                         } else {
-                            window.start_window_move();
+                            platform::start_window_move(window);
                         }
                     }),
             );
@@ -1558,7 +1558,7 @@ impl DockView {
                         if e.click_count == 2 {
                             window.zoom_window();
                         } else {
-                            window.start_window_move();
+                            platform::start_window_move(window);
                         }
                     }),
             )

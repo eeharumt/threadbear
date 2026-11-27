@@ -156,6 +156,7 @@ impl Threadbear {
                 },
                 cx,
                 move |window, cx| {
+                    threadbear_dock::platform::install_system_title_bar(window);
                     cx.new(|cx| SettingsWindow::new(app, client, instructions, tab, window, cx))
                 },
             );
