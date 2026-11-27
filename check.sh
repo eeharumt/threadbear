@@ -540,6 +540,13 @@ export NSUnbufferedIO=YES
 LIMITED=("$NODE" "$ROOT/scripts/limit-step.mjs"
   --silence "${THREADBEAR_CHECK_SILENCE_SECS:-600}" --total "${THREADBEAR_CHECK_TOTAL_SECS:-3600}" --)
 
+# Git for Windows' bash, where a few steps run differently.
+on_windows() {
+  local os
+  os="$(uname -s)"
+  [ "${os#MINGW}" != "$os" ] || [ "${os#MSYS}" != "$os" ] || [ "${os#CYGWIN}" != "$os" ]
+}
+
 # The runner's unit tests, as `npm test` runs them (runner/package.json),
 # plus a reporter that writes the files with a failure. Plenty of them
 # start real processes with real timeouts, and on a loaded machine those
@@ -608,26 +615,23 @@ runner_unit_tests() {
   # them out of the hard check. Run here, several wait out the 300 s
   # timeout one test at a time, and tb land took over an hour (27 Nov 2026).
   local note=""
-  case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*)
-    if [ -f "$dir/test/windows-known-failing.txt" ]; then
-      local all=() kept=() known="$LOGS/windows-known-failing.paths"
-      sed -e 's/\r$//' -e 's/#.*//' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' "$dir/test/windows-known-failing.txt" \
-        | grep . | sed 's|^|test/unit/|' >"$known"
-      if [ "${targets[0]}" = "test/unit/**/*.test.ts" ]; then
-        while IFS= read -r f; do all+=("$f"); done < <(cd "$dir" && find test/unit -name '*.test.ts' -type f | LC_ALL=C sort)
-      else
-        all=("${targets[@]}")
-      fi
-      while IFS= read -r f; do [ -n "$f" ] && kept+=("$f"); done < <(printf '%s\n' "${all[@]}" | grep -vxF -f "$known")
-      if [ "${#kept[@]}" = 0 ]; then
-        printf 'skip  %-20s (every file asked for is in test/windows-known-failing.txt)\n' "$name"
-        return
-      fi
-      [ "${#kept[@]}" = "${#all[@]}" ] || note="  (left out $((${#all[@]} - ${#kept[@]})) files test/windows-known-failing.txt lists)"
-      targets=("${kept[@]}")
+  if on_windows && [ -f "$dir/test/windows-known-failing.txt" ]; then
+    local all=() kept=() known="$LOGS/windows-known-failing.paths"
+    sed -e 's/\r$//' -e 's/#.*//' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' "$dir/test/windows-known-failing.txt" \
+      | grep . | sed 's|^|test/unit/|' >"$known"
+    if [ "${targets[0]}" = "test/unit/**/*.test.ts" ]; then
+      while IFS= read -r f; do all+=("$f"); done < <(cd "$dir" && find test/unit -name '*.test.ts' -type f | LC_ALL=C sort)
+    else
+      all=("${targets[@]}")
     fi
-    ;;
-  esac
+    while IFS= read -r f; do [ -n "$f" ] && kept+=("$f"); done < <(printf '%s\n' "${all[@]}" | grep -vxF -f "$known")
+    if [ "${#kept[@]}" = 0 ]; then
+      printf 'skip  %-20s (every file asked for is in test/windows-known-failing.txt)\n' "$name"
+      return
+    fi
+    [ "${#kept[@]}" = "${#all[@]}" ] || note="  (left out $((${#all[@]} - ${#kept[@]})) files test/windows-known-failing.txt lists)"
+    targets=("${kept[@]}")
+  fi
   # Test files that passed before with what they read now (their imports
   # and the files they and the scripts they run name, scripts/check-cache.mjs)
   # are left out, and the ones that run are recorded as they pass.
@@ -994,8 +998,10 @@ if [ "$APP_ONLY" = 0 ] && [ "$RUNNER_ONLY" = 0 ]; then
     # check host's builds use (desktop/scripts/shared-cargo/cargo says how and
     # why it copies first): one warm target in ~/.cache/threadbear-check, the
     # checks taking turns. Not on a check host, whose runs set their own.
+    # Nor on Windows: the wrapper is a bash script, which limit-step.mjs
+    # can't start there (spawn ENOENT, 27 Nov 2026), so cargo runs as it is.
     if [ -n "$CARGO" ] && [ -z "${THREADBEAR_CHECK_CHANGED_FILE:-}" ] && [ -z "${THREADBEAR_SHARED_CARGO_BASE:-}" ] \
-      && [ -x "$ROOT/desktop/scripts/shared-cargo/cargo" ]; then
+      && [ -x "$ROOT/desktop/scripts/shared-cargo/cargo" ] && ! on_windows; then
       export THREADBEAR_SHARED_CARGO_BASE="${XDG_CACHE_HOME:-$HOME/.cache}/threadbear-check/local-builds"
       export THREADBEAR_SHARED_CARGO_SRC="$ROOT" THREADBEAR_SHARED_CARGO_KEY="${ROOT##*/}"
       # The wrapper runs this one, not whichever cargo the PATH finds first.
@@ -1013,8 +1019,11 @@ if [ "$APP_ONLY" = 0 ] && [ "$RUNNER_ONLY" = 0 ]; then
     # Clippy over the whole workspace, with desktop/Cargo.toml's
     # [workspace.lints] (each says why it's there) and desktop/clippy.toml,
     # --quick included, when the Rust or the toolchain changed: a warning
-    # fails it.
-    if needed '^desktop/|^rust-toolchain\.toml$'; then
+    # fails it. Not on Windows: Windows' code isn't in the gate
+    # (desktop/README.md), and the Desktop workflow runs it on Mac and Linux.
+    if on_windows; then
+      in_part "desktop lint" && printf 'skip  %-20s (%s)\n' "desktop lint" "Windows' code isn't in the lint gate; Mac and Linux run it"
+    elif needed '^desktop/|^rust-toolchain\.toml$'; then
       lint_before="$FAILED"
       cargo_step "desktop lint" clippy --locked --workspace --all-targets -- -D warnings
       if [ "$FAILED" != "$lint_before" ] && [ -f "$LOGS/desktop-lint.log" ]; then

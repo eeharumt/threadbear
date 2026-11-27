@@ -52,4 +52,13 @@ Tauri で Windows と Android を一つにまとめた版は、2026年11月27日
 | Android の Schedules 画面 | `android-native/` | `358502ef` |
 | フォーク版の Android アプリのアイコンを青緑にする | `android-native/` | `697278fc` |
 | Windows で `tb land` を動かす | `runner/` | `144032ea`、`aba788f6` |
-| Windows の `check.sh` で、Windows で落ちると分かっているテストを外す（`tb land` が1時間超から数分に） | `check.sh`、`runner/test/unit/win-acl.test.ts` | 「Leave the tests known to fail on Windows out of its check」 |
+| Windows の `check.sh` で、Windows で落ちると分かっているテストを外す（`tb land` が1時間超から数分に） | `check.sh`、`runner/test/unit/win-acl.test.ts` | `6f2a558d` |
+| Windows の `check.sh` で、デスクトップのチェックを cargo で直接動かし、Windows のコードに lint をかけない（フォーク元も Windows は lint の対象外） | `check.sh` | 「Run the desktop checks on Windows」 |
+
+## Windows で作業するとき
+
+- **改行コード:** このリポジトリでは `git config core.autocrlf false` にしてある。Git for Windows は既定で改行を CRLF にして取り出すが、このリポジトリのツールは LF を前提にしている（ウェブサイトのビルドが止まった、2026年11月27日）。新しく clone したら、同じ設定をしてから取り出し直す。
+- **偽の `.git` フォルダ:** Cursor が、ホームフォルダや `AppData\Local` に検索の索引だけを入れた `.git` を作ることがある。あると、ランナーがその下のフォルダを git のリポジトリと思い込み、テストが落ちる。見つけたら脇へ移す。
+- **デスクトップアプリ:** `desktop/` で `cargo build --release -p threadbear-gpui` を走らせ、`threadbear-gpui.exe` と `threadbear-web-helper.exe` を `\192.168.11.22\ssd\software\threadbear-windows\` に置く。各 PC では、そこにある `install.cmd` を実行すると入る。フォーク元の自動更新は Mac だけで、Windows では更新しない。
+- **Android アプリ:** `android-native/` で、JDK 17（mise の temurin）と Android SDK を使って `./gradlew.bat --no-daemon :app:assembleFdroidRelease -PthreadbearFork=eeharu -PthreadbearRelease=<日付>` を走らせる。`~/.config/threadbear-android/release.jks` の鍵で署名されるので、入っている版に上書きできる。通知はスマホの ntfy（UnifiedPush）経由で届く。
+- **スマホのペアリング:** メインのランナーは GEN-WS にあり、QR はそこでしか出せない。
