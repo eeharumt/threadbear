@@ -98,7 +98,8 @@ export function agents(accounts: AccountModels[], runnerId?: string): AgentChoic
   };
   return listed
     .map((a) => ({ id: a.id, label: label(a), provider: a.provider, ...(a.email ? { email: a.email } : {}) }))
-    .sort((x, y) => rank(x.provider || undefined) - rank(y.provider || undefined) || x.label.localeCompare(y.label));
+    // A login that doesn't say its provider goes last, not with Claude's.
+    .sort((x, y) => (x.provider ? rank(x.provider) : ORDER.length) - (y.provider ? rank(y.provider) : ORDER.length) || x.label.localeCompare(y.label));
 }
 
 // The login on another runner that is the same one as `id` here: the same
