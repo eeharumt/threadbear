@@ -56,6 +56,7 @@ Tauri で Windows と Android を一つにまとめた版は、2026年11月27日
 | Windows の `check.sh` で、デスクトップのチェックを cargo で直接動かし、Windows のコードに lint をかけない（フォーク元も Windows は lint の対象外） | `check.sh` | 「Run the desktop checks on Windows」 |
 | Windows のデスクトップアプリにシステムのタイトルバーを出す。パネルのバーをドラッグしたときもウィンドウが動く | `desktop/dock/src/platform.rs`、`desktop/gpui/` | 「Show the system title bar on the Windows desktop app」 |
 | CLI の更新に失敗したときのバナーで、色の制御コードや記号を外して理由の行を出す。Dismiss したことを起動し直しても覚えておく | `runner/src/updates/manager.ts`、`desktop/gpui/` | 「Say why a CLI update failed in plain text, and keep its banner dismissed」 |
+| mise で入れた OpenCode は、Update を押すと `mise upgrade opencode` で更新する（OpenCode 自身の更新は入れ方がわからずに失敗する） | `runner/src/adapters/acp/agents.ts`、`runner/src/updates/manager.ts` | 「Update OpenCode through mise when mise installed it」 |
 
 ## Windows で作業するとき
 

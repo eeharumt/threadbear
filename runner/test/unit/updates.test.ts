@@ -704,6 +704,26 @@ test('Update runs the agent\'s own updater and reports what happened', async () 
   assert.equal(row.installedVersion, '2.0.0');
 });
 
+test('Update on a copy mise installed asks mise to upgrade it', async () => {
+  let v = '1.0.0';
+  const c = acpSetup({ version: () => v });
+  const ran: string[][] = [];
+  const exec = (c.u as unknown as { exec: Exec }).exec;
+  (c.u as unknown as { exec: Exec }).exec = async (cmd, args, opts) => {
+    if (cmd !== '/usr/bin/mise') return exec(cmd, args, opts);
+    ran.push(args);
+    v = '2.0.0';
+    return { code: 0, stdout: '', stderr: '' };
+  };
+  const acp = (c.u as unknown as { d: { acp: Record<string, unknown> } }).d.acp;
+  acp.updateCommand = () => ({ command: '/usr/bin/mise', args: ['upgrade', 'opencode'] });
+  c.u.update('opencode');
+  await c.u.settled();
+  assert.deepEqual(ran, [['upgrade', 'opencode']]);
+  assert.ok(!c.calls.some((a) => a[0] === 'upgrade'));
+  assert.equal(c.u.list().find((r) => r.provider === 'opencode')!.update?.state, 'succeeded');
+});
+
 test('an Update that finds nothing newer says up to date for a day, then offers Update again', async () => {
   const c = acpSetup();
   c.u.update('opencode');

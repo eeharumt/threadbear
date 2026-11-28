@@ -388,6 +388,7 @@ async function main(): Promise<void> {
       providers: ACP_PROVIDERS,
       binary: (p) => acpBinary(p as AcpProvider)(),
       updateArgs: (p) => ACP_AGENTS[p as AcpProvider].updateArgs,
+      updateCommand: (p, binary) => ACP_AGENTS[p as AcpProvider].updateCommand?.(binary, process.env.PATH ?? ''),
       commandArgs: (p, binary, args) => ACP_AGENTS[p as AcpProvider].commandArgs?.(binary, args) ?? args,
     },
   });

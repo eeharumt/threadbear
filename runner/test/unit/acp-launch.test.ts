@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { ACP_AGENTS, acpAccounts, isCursorBinary, opencodeEnv } from '../../src/adapters/acp/agents.ts';
+import { ACP_AGENTS, acpAccounts, isCursorBinary, miseUpdate, opencodeEnv } from '../../src/adapters/acp/agents.ts';
 import { loadConfig } from '../../src/config.ts';
 
 test('Windows Cursor uses the newest complete version, passing the script to Node', { skip: process.platform !== 'win32' }, (t) => {
@@ -70,4 +70,19 @@ test('OpenCode user config is opt-in and never applies to small jobs', (t) => {
   assert.deepEqual(opencodeEnv({ opencodeUserConfig: true, noTools: true }), opencodeEnv({ noTools: true }));
   assert.deepEqual(ACP_AGENTS.opencode.args({ opencodeUserConfig: true }), ['acp']);
   assert.ok(ACP_AGENTS.opencode.args({ opencodeUserConfig: true, noTools: true }).includes('--pure'));
+});
+
+test('a copy mise installed is upgraded by mise, and any other by its own updater', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tb-mise-'));
+  const mise = path.join(dir, process.platform === 'win32' ? 'mise.exe' : 'mise');
+  fs.writeFileSync(mise, '');
+  fs.chmodSync(mise, 0o755);
+  const shim = path.join(os.homedir(), '.local', 'share', 'mise', 'shims', 'opencode');
+  assert.deepEqual(miseUpdate('opencode', shim, dir), { command: mise, args: ['upgrade', 'opencode'] });
+  const installed = path.win32.join('C:', 'Users', 'me', 'AppData', 'Local', 'mise', 'installs', 'opencode', 'latest', 'node_modules', '.bin', 'opencode.cmd');
+  assert.deepEqual(miseUpdate('opencode', installed, dir), { command: mise, args: ['upgrade', 'opencode'] });
+  assert.equal(miseUpdate('opencode', path.join(os.homedir(), '.opencode', 'bin', 'opencode'), dir), undefined);
+  // No mise to run it with: the tool's own updater, which says what's wrong.
+  assert.equal(miseUpdate('opencode', shim, path.join(dir, 'none')), undefined);
+  fs.rmSync(dir, { recursive: true, force: true });
 });

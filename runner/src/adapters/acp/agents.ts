@@ -43,6 +43,9 @@ export type AcpAgent = {
   args(run?: AgentRun): string[];
   // Runs the agent's own updater, when Update is pressed. Empty: it has none.
   updateArgs: string[];
+  // The updater to run instead, for a copy its own can't update (one mise
+  // installed). Undefined: updateArgs on the binary.
+  updateCommand?(binary: string, pathEnv: string): { command: string; args: string[] } | undefined;
   // For CLIs installed as a script run by a bundled interpreter.
   commandArgs?(binary: string, args: string[]): string[];
   // Set on every process it starts. What stops a thread running tools
@@ -121,6 +124,15 @@ export function onPath(name: string, pathEnv: string, platform: NodeJS.Platform 
     if (isExecutableFile(file)) return file;
   }
   return undefined;
+}
+
+// A copy mise installed (its shim, or one in its installs folder) is mise's
+// to upgrade: the tool's own updater can't tell how it got there (OpenCode
+// 2.4 says "Could not detect the installation method", 27 Nov 2026).
+export function miseUpdate(tool: string, binary: string, pathEnv: string, platform: NodeJS.Platform = process.platform): { command: string; args: string[] } | undefined {
+  if (!/[\\/]mise[\\/](?:shims|installs)[\\/]/i.test(binary)) return undefined;
+  const mise = onPath('mise', pathEnv, platform);
+  return mise ? { command: mise, args: ['upgrade', tool] } : undefined;
 }
 
 // Cursor's CLI installs as ~/.local/bin/agent, a link into
@@ -508,6 +520,7 @@ export const ACP_AGENTS: Record<AcpProvider, AcpAgent> = {
         ? `This folder has OpenCode plugins (${folderPlugins(cwd)}), and OpenCode 1 runs their code as a session opens, before anything can ask you. Update OpenCode to 2 (\`opencode upgrade --major\`) or use Full access, then send this again.`
         : undefined,
     updateArgs: ['upgrade'],
+    updateCommand: (binary, pathEnv) => miseUpdate('opencode', binary, pathEnv),
     env: opencodeEnv,
     identifies: (init) => /opencode/i.test(init.agentInfo?.name ?? '') || Boolean(init.authMethods?.some((m) => m.id === 'opencode-login')),
     modeFor: (mode) => (mode === 'plan' ? 'plan' : 'build'),

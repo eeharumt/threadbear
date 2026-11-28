@@ -72,7 +72,7 @@ export type CliUpdatesDeps = {
   execPath?: string; // the runner's Node: npm and the fallback codex sit next to it
   random?: () => number;
   // The ACP agents, with the experiment's switch.
-  acp?: { providers: Provider[]; binary(p: Provider): string | undefined; updateArgs(p: Provider): string[]; commandArgs?(p: Provider, binary: string, args: string[]): string[] };
+  acp?: { providers: Provider[]; binary(p: Provider): string | undefined; updateArgs(p: Provider): string[]; updateCommand?(p: Provider, binary: string): { command: string; args: string[] } | undefined; commandArgs?(p: Provider, binary: string, args: string[]): string[] };
 };
 
 type UpdateOptions = { version?: string; force?: boolean; bootstrap?: boolean };
@@ -345,7 +345,10 @@ export class CliUpdates {
     this.setUpdate(p, { state: 'running', message: `Updating ${cliName(p)}` });
     await this.refreshAcp(p);
     const before = this.installed[p];
-    const r = await this.exec(binary, this.d.acp!.commandArgs?.(p, binary, args) ?? args, { timeoutMs: ACP_UPDATE_TIMEOUT_MS });
+    const other = this.d.acp!.updateCommand?.(p, binary);
+    const r = other
+      ? await this.exec(other.command, other.args, { timeoutMs: ACP_UPDATE_TIMEOUT_MS })
+      : await this.exec(binary, this.d.acp!.commandArgs?.(p, binary, args) ?? args, { timeoutMs: ACP_UPDATE_TIMEOUT_MS });
     await this.refreshAcp(p);
     const now = this.installed[p];
     if (r.code !== 0) {
