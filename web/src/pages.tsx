@@ -7,7 +7,6 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { useMutation } from 'convex/react';
 import { api } from '../../convex/_generated/api';
 import { useLiveQuery, usePageAway } from './live';
-import { agentOptions, defaultRunner, effortTitle, modelGroups, resolveChoices, type ThreadPick } from './new-thread-choices';
 import { useInbox } from './inbox';
 import { MessageText } from './messages';
 import { CommandNote, useCommand } from './command-state';
@@ -17,6 +16,7 @@ import { readTheme, setTheme, type Theme } from './theme';
 import { bytesWords, statsFresh, isOnline, matchesSchedule, runnersShown, runnerState, scheduleSections, sinceWords, tightest, untilWords } from './view-logic';
 import { busy, type Row } from './sidebar';
 import * as Icon from './icons';
+import { agents as agentsOn, defaultRunner, effortTitle, efforts, keeps, modelGroups, models as modelsOn, sameLogin, type AccountModels } from './new-thread-choices';
 
 export function useTheme(): [Theme, (t: Theme) => void] {
   const [theme, set] = useState(readTheme);
@@ -701,10 +701,13 @@ export function UsagePage({ token, id }: { token: string; id: string }) {
 export function NewThread({ token }: { token: string }) {
   const create = useMutation(api.phone.create);
   const runners = useLiveQuery(api.phone.runners, { token });
-  const accounts = useLiveQuery(api.phone.accounts, { token });
   const [text, setText] = useState('');
   const [runnerId, setRunnerId] = useState('');
-  const [pick, setPick] = useState<ThreadPick & { runnerId?: string }>({ accountId: '', modelId: '', effort: '' });
+  const accounts = useLiveQuery(api.phone.accounts, { token }) as AccountModels[] | undefined;
+  // '' is the runner's own default for each.
+  const [accountId, setAccountId] = useState('');
+  const [modelId, setModelId] = useState('');
+  const [effort, setEffort] = useState('');
   // The text stays until the runner has made the thread, so a failure keeps it.
   const cmd = useCommand(token);
   // The runner makes the thread, so it has an id once it's taken the command.
@@ -712,34 +715,85 @@ export function NewThread({ token }: { token: string }) {
   useEffect(() => {
     if (made) go(threadPath(made));
   }, [made]);
-  const now = Date.now();
-  const available = runnersShown(runners ?? [], now).filter((r) => r.runnerId === runnerId || (isOnline(r, now) && !r.draining));
-  const automatic = defaultRunner(runners ?? [], now);
-  const explicit = available.find((r) => r.runnerId === runnerId)?.runnerId;
-  const target = explicit ?? automatic;
-  const agents = agentOptions(accounts, target);
-  const previousAgents = pick.runnerId === target ? undefined : agentOptions(accounts, pick.runnerId);
-  const { agent, efforts, pick: resolved } = resolveChoices(agents, pick, previousAgents);
-  const { accountId, modelId, effort } = resolved;
-  if (runnerId && !explicit) setRunnerId('');
-  if (pick.runnerId !== target || pick.accountId !== accountId || pick.modelId !== modelId || pick.effort !== effort) {
-    setPick({ runnerId: target, ...resolved });
-  }
-  const { plain, groups } = modelGroups(agent?.models ?? []);
+  // Ticks so a runner that stops heartbeating leaves the list without a click.
+  const clock = useClock();
+  // Start's re-render when the choices it would send have moved under it.
+  const [refreshed, refresh] = useState(0);
+  // What a send would carry at `at`: the picks the runners and logins can
+  // still take, each back to its default when they can't.
+  const choicesAt = (at: number) => {
+    // A draining runner refuses new threads, so it isn't offered.
+    const online = runnersShown(runners ?? [], at).filter((r) => isOnline(r, at) && !r.draining);
+    // A picked runner that's since gone to sleep: back to the main one, as the select shows.
+    const sentRunner = online.some((r) => r.runnerId === runnerId) ? runnerId : '';
+    // The runner it lands on (phone:create's pick when none is named), whose logins are offered.
+    const fallback = defaultRunner(runners ?? [], (r) => isOnline(r, at))?.runnerId;
+    const agentsFor = (id: string) => agentsOn(accounts ?? [], id || fallback);
+    const agents = agentsFor(sentRunner);
+    // A login this runner doesn't have: back to the default.
+    const sentAccount = agents.some((a) => a.id === accountId) ? accountId : '';
+    const modelsFor = (id: string, account: string) => modelsOn(accounts ?? [], id || fallback, account || undefined);
+    const models = modelsFor(sentRunner, sentAccount);
+    const model = models.find((m) => m.id === modelId);
+    // A model this runner (or the login picked) has none of, or an effort the model doesn't offer: back to the default.
+    const sentModel = model ? modelId : '';
+    const sentEffort = models.length && keeps(effort, model) ? effort : '';
+    // A login belongs to one runner, so naming one names where it runs.
+    const sentTo = sentRunner || (sentAccount ? fallback ?? '' : '');
+    return { online, sentRunner, sentTo, agentsFor, agents, sentAccount, modelsFor, models, model, sentModel, sentEffort };
+  };
+  const { online, sentRunner, agentsFor, agents, sentAccount, modelsFor, models, model, sentModel, sentEffort } = choicesAt(Math.max(clock, refreshed, Date.now()));
+  // A login or model no runner has any more is dropped, not kept to
+  // come back by itself. Never by which runner it would land on: that turns
+  // on heartbeats, and a tab left in the background holds stale ones, which
+  // mustn't wipe a pick. What the runner it lands on can't take, and an
+  // effort the model shown doesn't offer, stay hidden instead (the selects
+  // show what a send carries), and changing runner, login or model drops them.
+  // Set while rendering, once the logins are in; it only clears, so it
+  // settles in one more render.
+  if (accounts !== undefined && modelId && !modelsOn(accounts).some((m) => m.id === modelId)) setModelId('');
+  if (accounts !== undefined && accountId && !accounts.some((a) => a && typeof a === 'object' && a.id === accountId)) setAccountId('');
+  // A pick that the new runner, login or model can't take is dropped, not
+  // kept hidden to come back when Mike switches back. A login goes over to
+  // the same one on the new runner, never to another that has the model.
+  const pickRunner = (id: string) => {
+    const account = sameLogin(agents, agentsFor(id), sentAccount);
+    const next = modelsFor(id, account);
+    const lost = !!sentAccount && !account;
+    const m = lost ? undefined : next.find((x) => x.id === modelId);
+    setRunnerId(id);
+    setAccountId(account);
+    if (!m) setModelId('');
+    if (lost || !next.length || !keeps(effort, m)) setEffort('');
+  };
+  // Picking a login, model or effort keeps the runner shown, so a picked
+  // runner that went to sleep doesn't come back under it.
+  const pickAgent = (id: string) => {
+    const next = modelsFor(sentRunner, id);
+    const m = next.find((x) => x.id === sentModel);
+    setRunnerId(sentRunner);
+    setAccountId(id);
+    setModelId(m ? sentModel : '');
+    setEffort(next.length && keeps(sentEffort, m) ? sentEffort : '');
+  };
+  const pickModel = (id: string) => {
+    setRunnerId(sentRunner);
+    setAccountId(sentAccount);
+    setModelId(id);
+    if (!keeps(effort, models.find((x) => x.id === id))) setEffort('');
+  };
   const submit = async () => {
     const body = text.trim();
     if (!body) return;
-    // Keep the backend's default routing unless the user picked a runner or
-    // the settings need the runner that supplied their model list.
-    const destination = explicit ?? (accountId || effort ? target : undefined);
-    await cmd.run(() => create({
-      token,
-      text: body,
-      ...(destination ? { runnerId: destination } : {}),
-      ...(accountId ? { accountId } : {}),
-      ...(modelId ? { model: modelId } : {}),
-      ...(effort ? { effort } : {}),
-    }), undefined);
+    // Worked out again now: the page may have sat untouched while a runner
+    // went quiet. If that changed what the selects show, show it and send
+    // nothing, so a thread never starts on choices Mike didn't see.
+    const sent = choicesAt(Date.now());
+    if (sent.sentRunner !== sentRunner || sent.sentAccount !== sentAccount || sent.sentModel !== sentModel || sent.sentEffort !== sentEffort) {
+      refresh(Date.now());
+      return;
+    }
+    await cmd.run(() => create({ token, text: body, ...(sent.sentTo ? { runnerId: sent.sentTo } : {}), ...(sent.sentAccount ? { accountId: sent.sentAccount } : {}), ...(sent.sentModel ? { model: sent.sentModel } : {}), ...(sent.sentEffort ? { effort: sent.sentEffort } : {}) }), undefined);
   };
   return (
     <div className="page">
@@ -777,64 +831,62 @@ export function NewThread({ token }: { token: string }) {
               }}
             />
             <div className="tools-row">
-              {available.length > 1 || (available.length === 1 && !automatic) || explicit ? (
-                <label className="pick-label">
-                  Runner
-                  <select value={explicit ?? ''} disabled={cmd.busy} onChange={(e) => setRunnerId(e.target.value)} title="Which runner it starts on">
-                    <option value="">Automatic runner</option>
-                    {available.map((r) => (
-                      <option key={r.runnerId} value={r.runnerId}>
-                        {r.name}
+              {/* Shown too while a picked runner is the only one up, so a send never names one unseen. */}
+              {online.length > 1 || sentRunner ? (
+                <select value={sentRunner} disabled={cmd.busy} onChange={(e) => pickRunner(e.target.value)} aria-label="Runner" title="Which runner it starts on">
+                  <option value="">Main runner</option>
+                  {online.map((r) => (
+                    <option key={r.runnerId} value={r.runnerId}>
+                      {r.name}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
+              {/* This fork's agent picker (docs/my-fork.md): which login it runs on. */}
+              {agents.length > 1 || sentAccount ? (
+                <select value={sentAccount} disabled={cmd.busy} onChange={(e) => pickAgent(e.target.value)} aria-label="Agent" title="Which agent it starts on">
+                  <option value="">Default agent</option>
+                  {agents.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.label}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
+              {models.length ? (
+                <>
+                  <select value={sentModel} disabled={cmd.busy} onChange={(e) => pickModel(e.target.value)} aria-label="Model" title="Which model it uses">
+                    <option value="">Default model</option>
+                    {modelGroups(models).plain.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.title}
                       </option>
                     ))}
+                    {modelGroups(models).groups.map((g) => (
+                      <optgroup key={g.label} label={g.label}>
+                        {g.models.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.title}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
                   </select>
-                </label>
-              ) : null}
-              {agents.length ? (
-                <>
-                  <label className="pick-label">
-                    Agent
-                    <select
-                      value={accountId}
-                      disabled={cmd.busy}
-                      onChange={(e) => setPick({ runnerId: target, accountId: e.target.value, modelId: '', effort })}
-                      title="Which agent it starts on"
-                    >
-                      <option value="">Default</option>
-                      {agents.map((a) => (
-                        <option key={a.id} value={a.id}>{a.label}</option>
+                  {efforts(model).length ? (
+                    <select value={sentEffort} disabled={cmd.busy} onChange={(e) => {
+                        setRunnerId(sentRunner);
+                        setAccountId(sentAccount);
+                        setModelId(sentModel);
+                        setEffort(e.target.value);
+                      }} aria-label="Effort" title="How hard it thinks">
+                      <option value="">Default effort</option>
+                      {efforts(model).map((l) => (
+                        <option key={l} value={l}>
+                          {effortTitle(l)}
+                        </option>
                       ))}
                     </select>
-                  </label>
-                  <label className="pick-label">
-                    Model
-                    <select
-                      value={modelId}
-                      disabled={cmd.busy || !agent?.models.length}
-                      onChange={(e) => setPick({ runnerId: target, accountId, modelId: e.target.value, effort })}
-                      title="Which model it starts on"
-                    >
-                      <option value="">Default</option>
-                      {plain.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
-                      {groups.map((g) => (
-                        <optgroup key={g.label} label={g.label}>
-                          {g.models.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
-                        </optgroup>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="pick-label">
-                    Effort
-                    <select
-                      value={effort}
-                      disabled={cmd.busy || !efforts.length}
-                      onChange={(e) => setPick({ runnerId: target, accountId, modelId, effort: e.target.value })}
-                      title="How much effort the model uses"
-                    >
-                      <option value="">Default</option>
-                      {efforts.map((level) => <option key={level} value={level}>{effortTitle(level)}</option>)}
-                    </select>
-                  </label>
+                  ) : null}
                 </>
               ) : null}
               <span className="grow" />

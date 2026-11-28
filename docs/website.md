@@ -36,13 +36,17 @@ Built 28 Oct 2026 (thread 66935d23).
   its tile an orange dot while it's low on memory or disk. The sidebar and rail
   read `phone:wakes`, not the schedules. On a phone the rail is a tab bar, with Runners and Usage under
   More. The pencil beside the search starts a thread (`/new`, `phone:create`)
-  in the runner's default folder. Pick an agent under **Agent** (named with its
-  login when the runner has several for that agent) to see its
-  models under **Model**, or leave **Agent** on **Default**. Finished turns
-  fold to "Worked for 4m 12s" and the reply (`web/src/turns.ts`, a port of
-  the iPhone's `Turns.fold`). The pending approval, the end_turn card of
-  asks or the done card's follow-ups appear by the composer. Return sends;
-  Shift-Return is a new line. The header's Share button and ... menu (Copy link, Star,
+  on the runner's default folder, with a model and effort picker (since 26
+  Nov; `web/src/new-thread-choices.ts`, a port of the iPhone's
+  `NewThreadChoices`) listing the models its runner has logins for. This
+  fork adds an **Agent** picker in front of it (docs/my-fork.md): picking
+  a login (named with its login when the runner has several for that
+  agent) lists only its models and sends its `accountId`. And a
+  thread whose finished turns fold to "Worked for 4m 12s" and the reply
+  (`web/src/turns.ts`, a port of the iPhone's `Turns.fold`), with the
+  pending approval, the end_turn card of asks or the done card's
+  follow-ups joined to the composer. Return sends; Shift-Return is a new
+  line. The header's Share button and ... menu (Copy link, Star,
   Hibernate or Wake, Archive or Bring back) do the rest. Opening a thread
   marks it seen.
 - It's a client of the phone's API (`convex/phone.ts`, docs/convex-backend.md
@@ -152,7 +156,7 @@ clicked through from a page laid over a hidden frame.
 
 From a terminal, by someone logged in to the Convex team:
 
-    npm run web:sign-in                  # Chrome on this Mac, prod, 90 days
+    npm run web:sign-in                  # the default browser, prod, 90 days
     npm run web:sign-in -- --qr          # a QR code for another device
     npm run web:sign-in -- --dev         # the dev deployment's site
     npm run web:sign-in -- --local       # Vite on localhost:5181, dev data
