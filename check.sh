@@ -843,7 +843,9 @@ fi
 if [ "$APP_ONLY" = 0 ]; then
   runner_unit_tests
   if [ "$QUICK" = 0 ]; then
-    if needed '^runner/(scripts/|launch\.mjs$|launcher/|test/deploy/)'; then
+    if on_windows; then
+      printf 'skip  %-20s (%s)\n' "runner deploy tests" "uses macOS launchd"
+    elif needed '^runner/(scripts/|launch\.mjs$|launcher/|test/deploy/)'; then
       step "runner deploy tests" "$ROOT/runner" bash test/deploy/run.sh
     else
       skip "runner deploy tests" "nothing they cover changed"
@@ -1111,7 +1113,9 @@ if [ "$RUNNER_ONLY" = 0 ] && [ -n "$SWIFT_MOCK_NEEDS" ] && [ -n "$SWIFT_MOCK_FIL
   swift_test_step "app mock tests" "$ROOT/app" env THREADBEAR_REQUIRE_MOCK=1 "${LIMITED[@]}" swift test --disable-keychain --filter "$SWIFT_MOCK_FILTER"
   fi
 fi
-if [ "$QUICK" = 0 ] && ! swift_needed; then
+if [ "$QUICK" = 0 ] && on_windows; then
+  printf 'skip  %-20s (%s)\n' "app build and tests" "requires macOS"
+elif [ "$QUICK" = 0 ] && ! swift_needed; then
   skip "app build and tests" "the Swift app is frozen and nothing it builds changed"
 elif [ "$QUICK" = 0 ]; then
   # The app's MockRunnerTests run the real WebSocket client (and the

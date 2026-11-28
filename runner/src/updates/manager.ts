@@ -804,9 +804,7 @@ export class CliUpdates {
 // bare "Failed" after the line with the reason.
 export function failureLine(output: string): string {
   const lines = output
-    // eslint-disable-next-line no-control-regex
     .replace(/\u001b(?:\[[0-?]*[ -/]*[@-~]|\][^\u0007\u001b]*(?:\u0007|\u001b\\)|[@-Z\\-_])/g, '')
-    // eslint-disable-next-line no-control-regex
     .replace(/[\u0000-\u0009\u000b-\u001f\u007f]/g, '')
     .split('\n')
     .map((l) => l.replace(/^[^\p{L}\p{N}]+/u, '').replace(/^\S {2,}/, '').trim())

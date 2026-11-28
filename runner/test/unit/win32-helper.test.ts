@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import net from 'node:net';
 import { spawn } from 'node:child_process';
 import { nullLogger } from '../../src/log.ts';
-import { coalesce, snapshotOwners, threadOfSocket } from '../../src/peer.ts';
+import { coalesce, ownThreadMarks, snapshotOwners, threadOfSocket } from '../../src/peer.ts';
 import { ProcessRegistry, StaleProcess, processInfo, startedAt } from '../../src/proc.ts';
 import { tmpDir } from '../helpers/fakes.ts';
 import path from 'node:path';
@@ -124,11 +124,12 @@ test('on Windows a real connection is found through the helper', onlyOnWindows('
     const sock = { remoteAddress: s.remoteAddress!, remotePort: s.remotePort!, localAddress: s.localAddress!, localPort: s.localPort! };
     // The first question starts PowerShell, which takes a second or more on a loaded machine.
     const lookupMs = PATIENCE_MS;
-    assert.deepEqual(await threadOfSocket(sock, { registry: { threadOfPid: (p) => (p === child.pid ? 'th9' : undefined) }, known: () => true, log: nullLogger, lookupMs }), { kind: 'thread', threadId: 'th9' });
+    const own = await ownThreadMarks();
+    assert.deepEqual(await threadOfSocket(sock, { registry: { threadOfPid: (p) => (p === child.pid ? 'th9' : undefined) }, known: () => true, log: nullLogger, lookupMs, own }), { kind: 'thread', threadId: 'th9' });
     // Under another process: its parent (this test) is the CLI.
-    assert.deepEqual(await threadOfSocket(sock, { registry: { threadOfPid: (p) => (p === process.pid ? 'th8' : undefined) }, known: () => true, log: nullLogger, lookupMs }), { kind: 'thread', threadId: 'th8' });
+    assert.deepEqual(await threadOfSocket(sock, { registry: { threadOfPid: (p) => (p === process.pid ? 'th8' : undefined) }, known: () => true, log: nullLogger, lookupMs, own }), { kind: 'thread', threadId: 'th8' });
     // Under no thread: the owner.
-    assert.deepEqual(await threadOfSocket(sock, { registry: { threadOfPid: () => undefined }, known: () => true, log: nullLogger, lookupMs }), { kind: 'owner' });
+    assert.deepEqual(await threadOfSocket(sock, { registry: { threadOfPid: () => undefined }, known: () => true, log: nullLogger, lookupMs, own }), { kind: 'owner' });
   } finally {
     child.kill();
     s?.destroy();

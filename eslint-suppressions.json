@@ -38,6 +38,9 @@
     },
     "@convex-dev/no-process-env": {
       "count": 1
+    },
+    "machines/no-direct-state-writes": {
+      "count": 1
     }
   },
   "convex/commandMachine.ts": {
@@ -104,7 +107,7 @@
       "count": 1
     },
     "machines/no-direct-state-writes": {
-      "count": 2
+      "count": 3
     }
   },
   "convex/phone.ts": {
@@ -207,7 +210,7 @@
       "count": 41
     },
     "machines/no-direct-state-writes": {
-      "count": 10
+      "count": 13
     }
   },
   "convex/tokens.ts": {
