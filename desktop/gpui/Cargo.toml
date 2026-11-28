@@ -111,6 +111,8 @@ objc2-core-graphics = { version = "=0.3.2", default-features = false, features =
 # through threadbear-web, at this version.
 cc = "=1.11.0"
 
+embed-resource = "=3.0.12"
+
 [features]
 # The scripted control the behaviour specs use (src/automation.rs). Off in
 # anything anyone runs for real: only `cargo build --features automation` has it.

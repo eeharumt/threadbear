@@ -92,7 +92,11 @@ pub(crate) fn short_path(path: &str) -> String {
 }
 
 /// What a file chip's tooltip says about its dot.
-pub(crate) const FILE_TIP: &str = "Not uploaded: only an agent on this Mac can open it";
+pub(crate) const FILE_TIP: &str = if cfg!(windows) {
+    "Not uploaded: only an agent on this PC can open it"
+} else {
+    "Not uploaded: only an agent on this Mac can open it"
+};
 
 /// The small dot at a file chip's end that says it isn't uploaded, only
 /// named, as Mike asked for (18 Nov): a video can be gigabytes, so it stays

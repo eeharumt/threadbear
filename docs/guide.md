@@ -1972,9 +1972,15 @@ next to the main one. Esc or a click outside puts it away, and ⌘K again does
 too. The Mac app hasn't got it.
 
 ## Keyboard shortcuts
+
 <!-- slug: keyboard -->
 
 <!-- picture: /docs-img/tall-keyboard.webp alt: Settings > Keyboard, where any command can have a key of your own -->
+
+On Windows, the menu bar is below the title bar. Open **File > Settings**
+for preferences, **Help > About Threadbear** for version information, or
+**File > Exit** to quit. **Alt+F4** closes the active window. Commands that
+use ⌘ on a Mac generally use **Ctrl** on Windows.
 
 Hold ⌘ to see the keys beside the buttons that have them. Settings (⌘,) >
 Keyboard lists every command in the menus that can have a key, and you can

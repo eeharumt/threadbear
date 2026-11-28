@@ -114,6 +114,8 @@ impl FileLinkAction {
 pub fn finder_title() -> &'static str {
     if cfg!(target_os = "macos") {
         "Show in Finder"
+    } else if cfg!(windows) {
+        "Show in File Explorer"
     } else {
         "Show in Folder"
     }

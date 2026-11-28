@@ -1,0 +1,2 @@
+// GPUI loads icon resource 1 when it registers the window class.
+1 ICON "threadbear.ico"

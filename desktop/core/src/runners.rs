@@ -467,6 +467,8 @@ pub fn order_after_drop(
     merged(part, &full)
 }
 
+pub const LOCAL_COMPUTER: &str = if cfg!(windows) { "This PC" } else { "This Mac" };
+
 // ---- Settings › Runners (RunnersSettings.swift)
 
 /// A runner's row in Settings › Runners (`RunnerRow`): its icon, name, how it
@@ -496,9 +498,9 @@ pub fn settings_rows(
     let own = SettingsRow {
         id: this_mac.map(|r| r.id.clone()).unwrap_or_default(),
         // Its own name, as other machines see it ("m5").
-        name: this_mac.map_or_else(|| "This Mac".to_owned(), |r| r.name.clone()),
+        name: this_mac.map_or_else(|| LOCAL_COMPUTER.to_owned(), |r| r.name.clone()),
         icon: this_mac.and_then(|r| r.icon.clone()),
-        status: "This Mac".to_owned(),
+        status: LOCAL_COMPUTER.to_owned(),
         is_default: default.is_none(),
         is_self: true,
     };
@@ -544,7 +546,7 @@ pub fn can_order(
 /// What it says now: the default's name, or "This Mac".
 pub fn default_title(default: Option<&str>, others: &[crate::remote::RemoteRunner]) -> String {
     match default {
-        None => "This Mac".to_owned(),
+        None => LOCAL_COMPUTER.to_owned(),
         Some(id) => others
             .iter()
             .find(|r| r.id == id)
@@ -553,7 +555,7 @@ pub fn default_title(default: Option<&str>, others: &[crate::remote::RemoteRunne
 }
 
 /// Behind the sections' ⓘs, as the Swift view has them.
-pub const DEFAULT_ABOUT: &str = "Where a new thread runs unless you pick another machine on the composer. This is this Mac's own choice.";
+pub const DEFAULT_ABOUT: &str = "Where a new thread runs unless you pick another machine on the composer. This choice applies to this computer.";
 pub const DEFAULT_ASK: &str = "change it, or to set up another machine to run threads on.";
 pub const DEFAULT_TIP: &str =
     "Where a new thread runs unless you pick another machine on the composer";
@@ -798,21 +800,29 @@ mod tests {
         // Not orderable yet: this Mac first, the rest as the backend has them.
         assert_eq!(
             lines(settings_rows(Some(&me), &others, None, None, false)),
-            ["laptop *: This Mac", "mac-mini: Online", "cloud: Offline"]
+            [
+                format!("laptop *: {LOCAL_COMPUTER}"),
+                "mac-mini: Online".into(),
+                "cloud: Offline".into()
+            ]
         );
         // In Mike's order, with the star on another default.
         let order = ["c".to_string(), "m".to_string(), "b".to_string()];
         let rows = settings_rows(Some(&me), &others, Some(&order), Some("b"), true);
         assert_eq!(
             lines(rows.clone()),
-            ["cloud: Offline", "laptop: This Mac", "mac-mini *: Online"]
+            [
+                "cloud: Offline".to_owned(),
+                format!("laptop: {LOCAL_COMPUTER}"),
+                "mac-mini *: Online".into()
+            ]
         );
         assert_eq!(rows[1].icon.as_deref(), Some("laptopcomputer"));
         assert!(rows[1].is_self && !rows[0].is_self);
         // This Mac before runners.list has said its name.
         assert_eq!(
             settings_rows(None, &[], None, None, false)[0].name,
-            "This Mac"
+            LOCAL_COMPUTER
         );
         assert!(can_order(true, &others, std::slice::from_ref(&me)));
         assert!(
@@ -823,7 +833,7 @@ mod tests {
             !can_order(true, &others, &[]),
             "this Mac's id isn't known yet"
         );
-        assert_eq!(default_title(None, &others), "This Mac");
+        assert_eq!(default_title(None, &others), LOCAL_COMPUTER);
         assert_eq!(default_title(Some("b"), &others), "mac-mini");
         assert!(runners_about(true).contains("Drag a runner"));
     }

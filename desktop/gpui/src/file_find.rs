@@ -426,14 +426,22 @@ pub(crate) fn find_bar(
         .child(step(
             "find-previous",
             "chevron.left",
-            "Find the match before (⇧⌘G)",
+            if cfg!(windows) {
+                "Find the match before (Ctrl+Shift+G)"
+            } else {
+                "Find the match before (⇧⌘G)"
+            },
             true,
         ))
         .child(div().w(gpui_kit::px(1.)).h(px(12.)).bg(p.hairline))
         .child(step(
             "find-next",
             "chevron.right",
-            "Find the match after (⌘G)",
+            if cfg!(windows) {
+                "Find the match after (Ctrl+G)"
+            } else {
+                "Find the match after (⌘G)"
+            },
             false,
         ));
     let done_click = on_done.clone();

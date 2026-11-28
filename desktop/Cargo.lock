@@ -7432,6 +7432,7 @@ version = "0.1.0"
 dependencies = [
  "alacritty_terminal",
  "cc",
+ "embed-resource",
  "futures",
  "gpui-kit",
  "image",

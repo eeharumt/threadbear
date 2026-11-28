@@ -127,7 +127,11 @@ impl SettingsWindow {
             default.as_deref(),
             orderable,
         );
-        let mut choices = vec![(None, "This Mac".to_owned(), t.self_runner_symbol())];
+        let mut choices = vec![(
+            None,
+            crate::LOCAL_COMPUTER.to_owned(),
+            t.self_runner_symbol(),
+        )];
         choices.extend(others.iter().map(|r| {
             (
                 Some(r.id.clone()),
@@ -210,7 +214,7 @@ impl SettingsWindow {
                 shown
                     .default
                     .clone()
-                    .unwrap_or_else(|| "This Mac".to_owned()),
+                    .unwrap_or_else(|| crate::LOCAL_COMPUTER.to_owned()),
                 "desktopcomputer",
             ),
         };
@@ -418,7 +422,7 @@ pub(crate) fn automation(
 ) -> Result<Option<Value>, String> {
     use gpui_kit::test::{TestEventExt as _, TestWindowExt as _};
     if let Some(name) = cmd["defaultRunner"].as_str() {
-        let runner = if name == "This Mac" {
+        let runner = if name == crate::LOCAL_COMPUTER || name == "This Mac" {
             None
         } else {
             Some(

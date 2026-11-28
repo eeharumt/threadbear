@@ -6,7 +6,7 @@ import { pane, row, section, sections } from '../support/pane.ts';
 // The menu's items, the app's word for Reveal in Finder aside: GPUI's
 // is the system's own on Windows and Linux.
 const wanted = (list: string) => list.split(' | ').map((s) => s.trim());
-const sameItem = (a: string, b: string) => a === b || (b === 'Reveal in Finder' && /^(Reveal in Finder|Show in folder)$/.test(a));
+const sameItem = (a: string, b: string) => a === b || (b === 'Reveal in Finder' && /^(Reveal in Finder|Show in folder|Show in File Explorer)$/.test(a));
 
 Then('Highlights has the headings {string}', async function (this: ThreadbearWorld, list: string) {
   const expected = wanted(list);

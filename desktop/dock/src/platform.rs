@@ -273,16 +273,21 @@ pub fn install_system_title_bar(window: &gpui_kit::Window) {
     let _ = window;
 }
 
+#[cfg(windows)]
+pub fn request_system_close(window: &gpui_kit::Window) {
+    windows::request_close(window);
+}
+
 #[cfg(target_os = "windows")]
 mod windows {
     use raw_window_handle::RawWindowHandle;
     use windows::Win32::Foundation::{HWND, LPARAM, RECT, WPARAM};
     use windows::Win32::UI::Input::KeyboardAndMouse::ReleaseCapture;
     use windows::Win32::UI::WindowsAndMessaging::{
-        GetClientRect, GetWindowLongPtrW, GetWindowRect, IsZoomed, SendMessageW, SetWindowLongPtrW,
-        SetWindowPos, ShowWindow, GWL_STYLE, HTCAPTION, SWP_FRAMECHANGED, SWP_NOACTIVATE,
-        SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SW_MAXIMIZE, WINDOW_STYLE, WM_NCLBUTTONDOWN,
-        WS_CAPTION,
+        GetClientRect, GetWindowLongPtrW, GetWindowRect, IsZoomed, PostMessageW, SendMessageW,
+        SetWindowLongPtrW, SetWindowPos, ShowWindow, GWL_STYLE, HTCAPTION, SWP_FRAMECHANGED,
+        SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SW_MAXIMIZE, WINDOW_STYLE, WM_CLOSE,
+        WM_NCLBUTTONDOWN, WS_CAPTION,
     };
 
     fn hwnd(window: &gpui_kit::Window) -> Option<HWND> {
@@ -316,6 +321,14 @@ mod windows {
             );
         }
         true
+    }
+
+    pub(super) fn request_close(window: &gpui_kit::Window) {
+        if let Some(hwnd) = hwnd(window) {
+            // SAFETY: this is the live window. Posting lets GPUI handle the
+            // close after the action's current update has finished.
+            let _ = unsafe { PostMessageW(Some(hwnd), WM_CLOSE, WPARAM(0), LPARAM(0)) };
+        }
     }
 
     pub(super) fn add_caption(window: &gpui_kit::Window) {

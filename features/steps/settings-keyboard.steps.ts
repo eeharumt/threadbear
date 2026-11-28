@@ -47,7 +47,8 @@ When('I press the keys {string} in Settings', async function (this: ThreadbearWo
 });
 
 Then('Settings asks {string}', async function (this: ThreadbearWorld, question: string) {
-  await this.until(`"${question}"`, (d) => section(d)?.question === question);
+  const expected = process.platform === 'win32' ? question.replace('⌘ or ⌃', 'Ctrl').replace('⌘', 'Ctrl+') : question;
+  await this.until(`"${expected}"`, (d) => section(d)?.question === expected);
 });
 
 When('I use the key for this one instead in Settings', async function (this: ThreadbearWorld) {

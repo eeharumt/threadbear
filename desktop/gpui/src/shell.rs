@@ -613,6 +613,7 @@ fn standard_key_display(command: Command) -> Option<&'static str> {
         Command::Hide if mac => Some("⌘H"),
         Command::HideOthers if mac => Some("⌥⌘H"),
         Command::Close if mac => Some("⌘W"),
+        Command::Close if cfg!(windows) => Some("Alt+F4"),
         Command::Minimize if mac => Some("⌘M"),
         _ => None,
     }
@@ -1727,7 +1728,20 @@ impl Threadbear {
             serde_json::to_string(&menus_json(&menus, &self.shortcuts)).unwrap_or_default();
         if signature != self.menu_signature {
             self.menu_signature = signature;
-            cx.set_menus(gpui_menus(&menus));
+            let menus = gpui_menus(&menus);
+            cx.set_menus(menus);
+            #[cfg(windows)]
+            {
+                use gpui_kit::base::GlobalState;
+                use gpui_kit::component::menu::AppMenuBar;
+                let menus = cx.get_menus().unwrap_or_default();
+                GlobalState::global_mut(cx).set_app_menus(menus);
+                if let Some(bar) = &self.app_menu_bar {
+                    bar.update(cx, |bar, cx| bar.reload(cx));
+                } else {
+                    self.app_menu_bar = Some(AppMenuBar::new(cx));
+                }
+            }
             #[cfg(target_os = "macos")]
             // SAFETY: tb_menu_icons (native/menu_icons.m) takes nothing and only
             // sets images on NSApp.mainMenu's items; we're on the main thread
@@ -1744,6 +1758,9 @@ impl Threadbear {
     /// The window's title (Window menu, Mission Control), as `windowTitle`.
     pub(crate) fn sync_window_title(&mut self, window: &mut Window) {
         let mut title = self.main_panel_title();
+        if cfg!(windows) {
+            title.push_str(" – Threadbear");
+        }
         // A scripted copy anyone can see says so wherever macOS names the
         // window (Mission Control, the Window menu, Activity Monitor's
         // windows): someone running a fork found one with the mock's demo
@@ -1776,38 +1793,47 @@ impl Threadbear {
                 Command::RestartToUpdate,
             )
         });
-        vec![
-            TopMenu::new(
-                "Threadbear",
-                [item("About Threadbear", Command::About)]
-                    .into_iter()
-                    .chain(restart)
-                    .chain([Separator, item("Settings…", Command::Settings), Separator])
-                    // The system's Services, for the words selected in a
-                    // text box (a Mac's own; the Swift app has it).
-                    .chain(
-                        cfg!(target_os = "macos")
-                            .then_some([Services, Separator])
-                            .into_iter()
-                            .flatten(),
-                    )
-                    .chain([
-                        item("Hide Threadbear", Command::Hide),
-                        item("Hide Others", Command::HideOthers),
-                        item("Show All", Command::ShowAll),
-                        Separator,
-                        item("Quit Threadbear", Command::Quit),
-                    ])
-                    .collect(),
-            ),
-            TopMenu::new(
-                "File",
-                vec![
-                    item("New Thread", Command::NewThread),
+        let app_menu = TopMenu::new(
+            "Threadbear",
+            [item("About Threadbear", Command::About)]
+                .into_iter()
+                .chain(if cfg!(windows) { None } else { restart.clone() })
+                .chain([Separator, item("Settings…", Command::Settings), Separator])
+                // The system's Services, for the words selected in a
+                // text box (a Mac's own; the Swift app has it).
+                .chain(
+                    cfg!(target_os = "macos")
+                        .then_some([Services, Separator])
+                        .into_iter()
+                        .flatten(),
+                )
+                .chain([
+                    item("Hide Threadbear", Command::Hide),
+                    item("Hide Others", Command::HideOthers),
+                    item("Show All", Command::ShowAll),
                     Separator,
-                    item("Close", Command::Close),
-                ],
-            ),
+                    item("Quit Threadbear", Command::Quit),
+                ])
+                .collect(),
+        );
+        let mut file = vec![
+            item("New Thread", Command::NewThread),
+            Separator,
+            item("Close", Command::Close),
+        ];
+        if cfg!(windows) {
+            if let Some(restart) = restart {
+                file.extend([Separator, restart]);
+            }
+            file.extend([
+                Separator,
+                item("Settings…", Command::Settings),
+                Separator,
+                item("Exit", Command::Quit),
+            ]);
+        }
+        let mut menus = vec![
+            TopMenu::new("File", file),
             // The text commands, as AppKit's standard Edit menu has them;
             // AppKit adds AutoFill, Start Dictation and Emoji & Symbols
             // under them on a Mac (window_menu.rs).
@@ -1923,10 +1949,22 @@ impl Threadbear {
                 "Window",
                 vec![
                     item("Minimize", Command::Minimize),
-                    item("Zoom", Command::Zoom),
-                    Separator,
-                    item("Bring All to Front", Command::BringAllToFront),
-                ],
+                    item(
+                        if cfg!(windows) { "Maximize" } else { "Zoom" },
+                        Command::Zoom,
+                    ),
+                ]
+                .into_iter()
+                .chain(
+                    (!cfg!(windows))
+                        .then_some([
+                            Separator,
+                            item("Bring All to Front", Command::BringAllToFront),
+                        ])
+                        .into_iter()
+                        .flatten(),
+                )
+                .collect(),
             ),
             TopMenu::new(
                 "Help",
@@ -1934,9 +1972,21 @@ impl Threadbear {
                     item("Set Up Threadbear", Command::SetUpThreadbear),
                     item("Take the Tour", Command::TakeTheTour),
                     item("Finish Setting Up", Command::FinishSettingUp),
-                ],
+                ]
+                .into_iter()
+                .chain(
+                    cfg!(windows)
+                        .then_some([Separator, item("About Threadbear", Command::About)])
+                        .into_iter()
+                        .flatten(),
+                )
+                .collect(),
             ),
-        ]
+        ];
+        if !cfg!(windows) {
+            menus.insert(0, app_menu);
+        }
+        menus
     }
 
     /// Show Frame Rate, in a build that can measure it (`frame-stats`).
@@ -2518,6 +2568,7 @@ impl TopMenu {
     }
 }
 
+#[derive(Clone)]
 pub(crate) enum MenuEntry {
     Item {
         title: String,
@@ -2565,7 +2616,7 @@ fn menus_json(menus: &[TopMenu], shortcuts: &ShortcutBindings) -> Value {
                     let key = command
                         .shortcut()
                         .and_then(|c| shortcuts.key(c))
-                        .map(|k| k.display())
+                        .map(|k| k.display_for_platform())
                         .or_else(|| standard_key_display(*command).map(str::to_owned));
                     let mut out = serde_json::json!({ "title": title, "enabled": enabled });
                     if let Some(key) = key {

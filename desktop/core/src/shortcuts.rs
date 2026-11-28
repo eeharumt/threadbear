@@ -132,6 +132,43 @@ impl ShortcutKey {
         format!("{mods}{key}")
     }
 
+    /// A shortcut as shown in the desktop interface on the current OS.
+    pub fn display_for_platform(&self) -> String {
+        if !cfg!(windows) {
+            return self.display();
+        }
+
+        let mut parts = Vec::new();
+        if self.control || self.command {
+            parts.push("Ctrl");
+        }
+        if self.option {
+            parts.push("Alt");
+        }
+        if self.shift {
+            parts.push("Shift");
+        }
+        let key = match self.key.as_str() {
+            "return" => "Enter".to_owned(),
+            "escape" => "Esc".to_owned(),
+            "space" => "Space".to_owned(),
+            "delete" => "Backspace".to_owned(),
+            "forwarddelete" => "Delete".to_owned(),
+            "up" => "Up".to_owned(),
+            "down" => "Down".to_owned(),
+            "left" => "Left".to_owned(),
+            "right" => "Right".to_owned(),
+            "pageup" => "Page Up".to_owned(),
+            "pagedown" => "Page Down".to_owned(),
+            "home" => "Home".to_owned(),
+            "end" => "End".to_owned(),
+            "tab" => "Tab".to_owned(),
+            _ => self.key.to_uppercase(),
+        };
+        parts.push(&key);
+        parts.join("+")
+    }
+
     /// True for a press that's text, not a command (`typesInstead`).
     pub fn types_instead(&self) -> bool {
         !self.command && !self.control && !is_function_key(&self.key)
@@ -526,6 +563,12 @@ mod tests {
         assert_eq!(key("cmd+[").display(), "⌘[");
         assert_eq!(key("ctrl+return").display(), "⌃↩");
         assert_eq!(key("f5").display(), "F5");
+        #[cfg(windows)]
+        {
+            assert_eq!(key("cmd+opt+down").display_for_platform(), "Ctrl+Alt+Down");
+            assert_eq!(key("cmd+shift+c").display_for_platform(), "Ctrl+Shift+C");
+            assert_eq!(key("ctrl+return").display_for_platform(), "Ctrl+Enter");
+        }
     }
 
     #[test]

@@ -593,7 +593,15 @@ impl Render for AnythingBox {
             .text_size(px(size::DETAIL))
             .text_color(style::secondary_text(cx))
             .child(key_note("↵", "open", cx))
-            .child(key_note("⌘↵", "open beside", cx))
+            .child(key_note(
+                if cfg!(windows) {
+                    "Ctrl+Enter"
+                } else {
+                    "⌘↵"
+                },
+                "open beside",
+                cx,
+            ))
             .child(key_note("esc", "close", cx));
         let panel = v_flex()
             .id("open-anything")
@@ -835,10 +843,15 @@ fn line(item: &Item) -> String {
 
 /// What hovering an entry says it does.
 fn row_tip(item: &Item) -> String {
+    let beside = if cfg!(windows) {
+        "Ctrl+Enter"
+    } else {
+        "⌘Return"
+    };
     match item.kind {
-        Kind::Thread => format!("Open {} (⌘Return: in a panel of its own)", item.title),
+        Kind::Thread => format!("Open {} ({beside}: in a panel of its own)", item.title),
         Kind::Panel => format!(
-            "Show the {} panel (⌘Return: beside this thread)",
+            "Show the {} panel ({beside}: beside this thread)",
             item.title
         ),
         Kind::Project => format!("Open the {} project's page", item.title),

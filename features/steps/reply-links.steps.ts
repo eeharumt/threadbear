@@ -93,9 +93,10 @@ Then('the menu of the link {string} offers {string}', async function (this: Thre
   await menuOffers(this, words, list);
 });
 
-// The Finder is the Mac's; Windows and Linux call theirs a folder.
+// The file browser's name depends on the desktop system.
 Then('the menu of the link {string} offers {string} on a Mac, {string} elsewhere', async function (this: ThreadbearWorld, words: string, mac: string, elsewhere: string) {
-  await menuOffers(this, words, process.platform === 'darwin' ? mac : elsewhere);
+  const list = process.platform === 'win32' ? elsewhere.replace('Show in Folder', 'Show in File Explorer') : elsewhere;
+  await menuOffers(this, words, process.platform === 'darwin' ? mac : list);
 });
 
 When('I choose {string} from the menu of the link {string}', async function (this: ThreadbearWorld, item: string, words: string) {

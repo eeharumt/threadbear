@@ -1359,16 +1359,18 @@ impl Render for ScheduleEditor {
                     .runner_id
                     .as_ref()
                     .and_then(|id| others.iter().find(|o| &o.0 == id))
-                    .map_or_else(|| "This Mac".to_owned(), |o| o.1.clone());
+                    .map_or_else(|| crate::LOCAL_COMPUTER.to_owned(), |o| o.1.clone());
                 let current_symbol = state
                     .runner_id
                     .as_ref()
                     .and_then(|id| others.iter().find(|o| &o.0 == id))
                     .map_or(self_symbol, |o| o.3);
                 let mut choices = vec![
-                    choice("This Mac", state.runner_id.is_none(), |e, window, cx| {
-                        e.set_runner(None, window, cx)
-                    }),
+                    choice(
+                        crate::LOCAL_COMPUTER,
+                        state.runner_id.is_none(),
+                        |e, window, cx| e.set_runner(None, window, cx),
+                    ),
                     Choice::Separator,
                 ];
                 for (id, name, online, symbol) in &others {
@@ -1410,7 +1412,7 @@ impl Render for ScheduleEditor {
                 let name = state
                     .runner_name
                     .clone()
-                    .unwrap_or_else(|| "This Mac".into());
+                    .unwrap_or_else(|| crate::LOCAL_COMPUTER.into());
                 let symbol = match &state.runner_id {
                     Some(id) => others
                         .iter()

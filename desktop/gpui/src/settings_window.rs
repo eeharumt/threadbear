@@ -736,6 +736,7 @@ impl SettingsWindow {
         let mut sections = vec![
             self.appearance_section(cx),
             self.panels_section(cx),
+            #[cfg(not(windows))]
             self.quitting_section(cx),
             self.notifications_section(cx),
         ];
@@ -856,7 +857,7 @@ impl SettingsWindow {
         sections.push(section(
             "settings-activity",
             "Activity log",
-            "When you ask a thread to change Threadbear, its agent can check this log first to see how you really use the app. It notes the buttons, rows and menu items you use (by their tooltips and titles), your shortcuts, the threads and pages you open, and when you send or answer something, never what you type. It stays on this Mac for 30 days and Threadbear never sends it anywhere.",
+            "When you ask a thread to change Threadbear, its agent can check this log first to see how you really use the app. It notes the buttons, rows and menu items you use (by their tooltips and titles), your shortcuts, the threads and pages you open, and when you send or answer something, never what you type. It stays on this computer for 30 days and Threadbear never sends it anywhere.",
             "read it with tb activity and tell you what's in it.",
             vec![row("Keep an activity log", switch, cx)],
             cx,
@@ -1221,6 +1222,7 @@ impl SettingsWindow {
 
     /// `QuitPrompt`'s switch: ticking Don't ask again turns it off, and this
     /// turns it back on.
+    #[cfg(not(windows))]
     fn quitting_section(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let on = self
             .app
@@ -1857,7 +1859,7 @@ fn waiting_text(app: &WeakEntity<Threadbear>, cx: &App) -> String {
 // Full sync's ⓘ, kept here in one place so its wording is easy to change.
 // The benefit first, then what goes up and what doesn't (docs/convex-backend.md, "Full sync").
 // The runner reads sync.full when it starts, hence the last sentence.
-const FULL_SYNC_ABOUT: &str = "Lets your phone, the website and your other machines show a thread's tool output and diffs, even when the machine that ran it is off.\n\nTool output, inputs and diffs go to your own Convex deployment, with secrets scrubbed out first, and are kept for 30 days. Screenshots, and tools reading things like .env files and keys, stay on this Mac. Scrubbing isn't a guarantee. A change takes effect when the runner next starts.";
+const FULL_SYNC_ABOUT: &str = "Lets your phone, the website and your other machines show a thread's tool output and diffs, even when the machine that ran it is off.\n\nTool output, inputs and diffs go to your own Convex deployment, with secrets scrubbed out first, and are kept for 30 days. Screenshots, and tools reading things like .env files and keys, stay on the computer that ran the thread. Scrubbing isn't a guarantee. A change takes effect when the runner next starts.";
 const FULL_SYNC_ASK: &str = "explain what goes up, or turn it on or off for you.";
 
 fn section(

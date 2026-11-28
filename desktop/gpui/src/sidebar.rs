@@ -1634,7 +1634,7 @@ impl Threadbear {
     pub(crate) fn machine_menu_rows(&self, t: &ThreadSummary) -> Vec<MenuRow> {
         let name = self
             .runner_label(t)
-            .unwrap_or_else(|| "This Mac".to_owned());
+            .unwrap_or_else(|| crate::LOCAL_COMPUTER.to_owned());
         let symbol = match t.runner_id.as_deref() {
             Some(id) => self.runner_icon_symbol(Some(id)),
             None => self.self_runner_symbol(),

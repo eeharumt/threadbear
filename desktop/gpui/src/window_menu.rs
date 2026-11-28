@@ -215,7 +215,12 @@ pub(crate) fn close_window(window: &mut Window, cx: &mut App) {
             after_this(&*ns_window, objc2::sel!(performClose:));
         }
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(windows)]
+    {
+        let _ = cx;
+        threadbear_dock::platform::request_system_close(window);
+    }
+    #[cfg(not(any(target_os = "macos", windows)))]
     {
         // Off the Mac there's no asking the window as its button does, so
         // the main window quits and another just goes.

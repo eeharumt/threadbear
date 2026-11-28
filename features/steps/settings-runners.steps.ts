@@ -5,17 +5,18 @@ import { Then, When } from '@cucumber/cucumber';
 import type { ThreadbearWorld } from '../support/world.ts';
 
 type RunnersSection = { rows: string[]; default: string; canOrder: boolean; directLink: boolean };
+const runnerLabel = (text: string) => process.platform === 'win32' ? text.replace('This Mac', 'This PC') : text;
 const section = (d: unknown) => (d as { settingsWindow?: { runners?: RunnersSection | null } | null }).settingsWindow?.runners;
 
 Then('Settings lists the runners {string} and {string}', async function (this: ThreadbearWorld, first: string, second: string) {
   await this.until(`Settings listing "${first}", then "${second}"`, (d) => {
     const rows = section(d)?.rows ?? [];
-    return rows.length === 2 && rows[0] === first && rows[1] === second;
+    return rows.length === 2 && rows[0] === runnerLabel(first) && rows[1] === runnerLabel(second);
   });
 });
 
 Then('Settings says new threads start on {string}', async function (this: ThreadbearWorld, name: string) {
-  await this.until(`new threads starting on ${name}`, (d) => section(d)?.default === name);
+  await this.until(`new threads starting on ${name}`, (d) => section(d)?.default === runnerLabel(name));
 });
 
 // As the section's picker does. The Swift picker is an AppKit pop-up, which a

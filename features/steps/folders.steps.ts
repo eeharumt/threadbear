@@ -87,7 +87,7 @@ Then('the folder menu offers {string}', function (this: ThreadbearWorld, list: s
   const items = this.menuTitles ?? [];
   for (const item of list.split(' | ')) {
     // A rule the Mac app draws, and Windows' or Linux's word for Finder.
-    const found = items.some((i) => i === item || (item === 'Reveal in Finder' && /^(Reveal in Finder|Show in folder)$/.test(i)) || (item === 'Open in Finder' && /^(Open in Finder|Open in its app)$/.test(i)));
+    const found = items.some((i) => i === item || (item === 'Reveal in Finder' && /^(Reveal in Finder|Show in folder|Show in File Explorer)$/.test(i)) || (item === 'Open in Finder' && /^(Open in Finder|Open in its app|Open in File Explorer|Open in File Manager)$/.test(i)));
     assert.ok(found, `no "${item}" in: ${items.join(' | ')}`);
   }
 });

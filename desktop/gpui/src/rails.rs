@@ -427,14 +427,16 @@ fn rail_button(
 impl Threadbear {
     fn shortcut_tip(&self, title: &str, command: ShortcutCommand) -> String {
         match self.shortcuts.key(command) {
-            Some(key) => format!("{title} ({})", key.display()),
+            Some(key) => format!("{title} ({})", key.display_for_platform()),
             None => title.to_string(),
         }
     }
 
     /// A command's key as the menus show it ("⌘1"), if it has one.
     pub(crate) fn shortcut_display(&self, command: ShortcutCommand) -> Option<String> {
-        self.shortcuts.key(command).map(|k| k.display())
+        self.shortcuts
+            .key(command)
+            .map(|k| k.display_for_platform())
     }
 
     /// The Inbox's thread count, for the Threads button's badge.

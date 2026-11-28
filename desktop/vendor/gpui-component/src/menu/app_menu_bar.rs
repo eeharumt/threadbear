@@ -11,7 +11,7 @@ use gpui::{
     App, AppContext as _, ClickEvent, Context, DismissEvent, Entity, FocusHandle, Focusable,
     InteractiveElement as _, IntoElement, KeyBinding, MouseButton, OwnedMenu, ParentElement,
     Render, Role, ScrollHandle, SharedString, StatefulInteractiveElement, Styled, Subscription,
-    Window, anchored, deferred, div, prelude::FluentBuilder, px,
+    WeakEntity, Window, anchored, deferred, div, prelude::FluentBuilder, px,
 };
 
 const CONTEXT: &str = "AppMenuBar";
@@ -48,7 +48,7 @@ impl AppMenuBar {
 
     /// Reload the menus from the app.
     pub fn reload(&mut self, cx: &mut Context<Self>) {
-        let menu_bar = cx.entity();
+        let menu_bar = cx.entity().downgrade();
         let menus: Vec<OwnedMenu> = GlobalState::global(cx)
             .app_menus()
             .iter()
@@ -145,7 +145,7 @@ impl Render for AppMenuBar {
 
 /// A menu in the menu bar.
 pub(super) struct AppMenu {
-    menu_bar: Entity<AppMenuBar>,
+    menu_bar: WeakEntity<AppMenuBar>,
     ix: usize,
     name: SharedString,
     menu: OwnedMenu,
@@ -158,7 +158,7 @@ impl AppMenu {
     pub(super) fn new(
         ix: usize,
         menu: &OwnedMenu,
-        menu_bar: Entity<AppMenuBar>,
+        menu_bar: WeakEntity<AppMenuBar>,
         cx: &mut App,
     ) -> Entity<Self> {
         let name = menu.name.clone();
@@ -174,7 +174,7 @@ impl AppMenu {
 
     /// Whether this menu's popup is the one the menu bar currently has open.
     fn is_open(&self, cx: &App) -> bool {
-        self.menu_bar.read(cx).selected_index == Some(self.ix)
+        self.menu_bar.upgrade().is_some_and(|bar| bar.read(cx).selected_index == Some(self.ix))
     }
 
     fn build_popup_menu(
@@ -182,7 +182,7 @@ impl AppMenu {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Entity<PopupMenu> {
-        let action_context = self.menu_bar.read(cx).action_context.clone();
+        let action_context = self.menu_bar.upgrade().and_then(|bar| bar.read(cx).action_context.clone());
         let popup_menu = match self.popup_menu.as_ref() {
             None => {
                 let items = self.menu.items.clone();
@@ -225,7 +225,7 @@ impl AppMenu {
         self.popup_menu.take();
         self.menu_bar.update(cx, |state, cx| {
             state.on_cancel(&Cancel, window, cx);
-        });
+        }).ok();
     }
 
     fn handle_trigger_click(
@@ -254,7 +254,7 @@ impl AppMenu {
             return;
         }
 
-        let has_activated_menu = self.menu_bar.read(cx).has_activated_menu();
+        let has_activated_menu = self.menu_bar.upgrade().is_some_and(|bar| bar.read(cx).has_activated_menu());
         if !has_activated_menu {
             return;
         }

@@ -1,6 +1,6 @@
 Feature: The menu bar's standard menus
-  As someone who expects a Mac app's menus
-  I want Edit, File > Close, Window and About where every Mac app has them
+  As someone using the desktop app
+  I want to find the text, window and app commands where I expect them
   So the system's text tools and window commands are where I look
 
   Background:
@@ -29,11 +29,11 @@ Feature: The menu bar's standard menus
 
   @menu.file
   Scenario: The File menu can close the window
-    Then the "File" menu lists "New Thread | Close"
+    Then the "File" menu lists "New Thread | Close", or "New Thread | Close | Settings… | Exit" on Windows
 
   @menu.window
-  Scenario: The Window menu has Minimize, Zoom and Bring All to Front
-    Then the "Window" menu lists "Minimize | Zoom | Bring All to Front"
+  Scenario: The Window menu has the system's window commands
+    Then the "Window" menu lists "Minimize | Zoom | Bring All to Front", or "Minimize | Maximize" on Windows
 
   # The Mac's own keys. AppKit adds View's Enter Full Screen and Window's
   # Fill, Center and Move & Resize only as the menu opens, which neither

@@ -22,7 +22,8 @@ Then('the {string} menu shows {string} ticked', async function (this: Threadbear
 
 Then('the {string} menu has a row {string}', async function (this: ThreadbearWorld, menu: string, row: string) {
   const lines = await menuLines(this, menu);
-  assert.ok(lines.some((l) => l.startsWith(row)), `no row "${row}" in the ${menu} menu:\n${lines.join('\n')}`);
+  const expected = process.platform === 'win32' && menu === 'runner' ? row.replace('This Mac', 'This PC') : row;
+  assert.ok(lines.some((l) => l.startsWith(expected)), `no row "${row}" in the ${menu} menu:\n${lines.join('\n')}`);
 });
 
 // Once a pick has landed, which takes a moment.

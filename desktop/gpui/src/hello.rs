@@ -820,7 +820,7 @@ impl Threadbear {
                 "claude",
                 "Claude Code".into(),
                 None,
-                "Not signed in on this Mac".into(),
+                format!("Not signed in on {}", crate::LOCAL_COMPUTER.to_lowercase()).into(),
                 Some(button),
                 cx,
             ));
@@ -910,7 +910,11 @@ impl Threadbear {
             None => (None, "Looking…".into()),
             Some("") => (
                 None,
-                "Not signed in; agents still commit on this Mac".into(),
+                format!(
+                    "Not signed in; agents still commit on {}",
+                    crate::LOCAL_COMPUTER.to_lowercase()
+                )
+                .into(),
             ),
             Some(who) => (Some("Signed in"), format!("As {who}, for pull requests")),
         };

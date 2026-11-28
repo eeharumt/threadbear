@@ -168,6 +168,8 @@ mod web_panels;
 mod web_runtime;
 mod window_menu;
 
+pub(crate) use threadbear_core::runners::LOCAL_COMPUTER;
+
 use app::Threadbear;
 use gpui_kit::*;
 use serde_json::Value;
@@ -434,7 +436,7 @@ fn main() {
                     appears_transparent: cfg!(not(windows)),
                     traffic_light_position: Some(point(px(9.), px(10.))),
                 }),
-                app_owns_titlebar_drag: true,
+                app_owns_titlebar_drag: cfg!(not(windows)),
                 window_min_size: Some(size(px(760.), px(480.))),
                 app_id: Some("threadbear".into()),
                 focus,

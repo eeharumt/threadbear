@@ -187,7 +187,11 @@ impl Threadbear {
         if project.icon.as_ref().is_some_and(|i| i.from.is_some()) {
             rows.push(MenuRow::separator());
             rows.push(MenuRow::item(
-                "Show Original in Finder",
+                if cfg!(windows) {
+                    "Show Original in File Explorer"
+                } else {
+                    "Show Original in Finder"
+                },
                 "folder",
                 MenuAction::Project(ProjectAction::RevealIcon(id)),
             ));
@@ -899,7 +903,7 @@ impl Threadbear {
                                 .text_size(px(style::size::LABEL))
                                 .line_height(px(16.))
                                 .hover(|s| s.underline()),
-                            "Show in Finder",
+                            crate::files::REVEAL_TITLE,
                         )
                         .on_click(move |_, _, cx| {
                             crate::open_gate::reveal(&show, crate::open_gate::Origin::ThisMac, cx)
@@ -1154,7 +1158,11 @@ impl Threadbear {
                             .text_color(faint)
                             .hover(|s| s.underline()),
                         if file.is_none() {
-                            "Show the folder in Finder"
+                            if cfg!(windows) {
+                                "Show the folder in File Explorer"
+                            } else {
+                                "Show the folder in Finder"
+                            }
                         } else {
                             "Open the file"
                         },

@@ -586,12 +586,13 @@ impl Threadbear {
         let default_service = self.new_thread.prefs.remembered.default_service.clone();
         let mut lines = vec![
             format!(
-                "{}This Mac{}",
+                "{}{}{}",
                 if chosen.is_none() && service.is_none() {
                     "[x] "
                 } else {
                     "[ ] "
                 },
+                crate::LOCAL_COMPUTER,
                 if default.is_none() && default_service.is_none() {
                     " *"
                 } else {
@@ -631,12 +632,13 @@ impl Threadbear {
         lines.push("---".to_owned());
         lines.push("[ ] Default".to_owned());
         lines.push(format!(
-            "    {}This Mac",
+            "    {}{}",
             if default.is_none() && default_service.is_none() {
                 "[x] "
             } else {
                 "[ ] "
-            }
+            },
+            crate::LOCAL_COMPUTER,
         ));
         for runner in &self.remote.machines() {
             lines.push(format!(
@@ -720,7 +722,7 @@ impl Threadbear {
         let own = self.self_runner_symbol();
         let mut rows = vec![
             MenuRow::runner(
-                "This Mac",
+                crate::LOCAL_COMPUTER,
                 own,
                 chosen.is_none() && service.is_none(),
                 default.is_none() && default_service.is_none(),
@@ -1395,7 +1397,7 @@ pub(crate) fn runner_menu_command(
             app.update(cx, |t, cx| t.set_default_service(id, cx));
             return Ok(json!("ok"));
         }
-        let runner = if name == "This Mac" {
+        let runner = if name == crate::LOCAL_COMPUTER || name == "This Mac" {
             None
         } else {
             Some(
@@ -1416,7 +1418,7 @@ pub(crate) fn runner_menu_command(
             app.update(cx, |t, cx| t.choose_new_thread_service(id, true, cx));
             return Ok(json!("ok"));
         }
-        let runner = if title == "This Mac" {
+        let runner = if title == crate::LOCAL_COMPUTER || title == "This Mac" {
             None
         } else {
             Some(

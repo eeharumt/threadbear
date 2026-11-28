@@ -31,6 +31,13 @@ When('shortcuts.json gives {string} the key {string}', async function (this: Thr
   fs.writeFileSync(path.join(dir, 'shortcuts.json'), JSON.stringify({ [command]: key }));
 });
 
+function menuKey(key: string): string {
+  if (process.platform !== 'win32') return key;
+  const parts = [key.includes('⌘') && 'Ctrl', key.includes('⌥') && 'Alt', key.includes('⇧') && 'Shift'];
+  const name = key.replace(/[⌘⌥⇧]/g, '').replace('↓', 'Down');
+  return [...parts.filter(Boolean), name].join('+');
+}
+
 Then('the {string} menu has {string} on {string}', async function (this: ThreadbearWorld, menu: string, title: string, key: string) {
   let last = '';
   const deadline = Date.now() + 8000;
@@ -38,7 +45,7 @@ Then('the {string} menu has {string} on {string}', async function (this: Threadb
     const out = JSON.parse(okValue(await this.app.do({ cmd: 'menus' }))) as { title: string; items: { title: string; key?: string }[] }[];
     const item = out.find((m) => m.title === menu)?.items.find((i) => i.title === title);
     last = JSON.stringify(item ?? null);
-    if (item && item.key === key) return;
+    if (item && item.key === menuKey(key)) return;
     assert.ok(Date.now() < deadline, `${title} in ${menu}: ${last}`);
     await new Promise((r) => setTimeout(r, 200));
   }
@@ -60,8 +67,9 @@ Then("the {string} menu hasn't {string}", async function (this: ThreadbearWorld,
 // named for its instance).
 async function appMenuKey(world: ThreadbearWorld, title: string, key: string) {
   const out = JSON.parse(okValue(await world.app.do({ cmd: 'menus' }))) as { title: string; items: { title: string; key?: string }[] }[];
-  const item = out[0]?.items.find((i) => i.title === title);
-  assert.equal(item?.key, key, `${title} in the app menu: ${JSON.stringify(item ?? null)}`);
+  const actualTitle = process.platform === 'win32' && title === 'Quit Threadbear' ? 'Exit' : title;
+  const item = out[0]?.items.find((i) => i.title === actualTitle);
+  assert.equal(item?.key, menuKey(key), `${title} in the app menu: ${JSON.stringify(item ?? null)}`);
 }
 
 Then('the app menu has {string} on {string}', async function (this: ThreadbearWorld, title: string, key: string) {

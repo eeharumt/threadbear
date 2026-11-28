@@ -43,8 +43,18 @@ use threadbear_core::text_file::{words, MarkdownView, LIMIT};
 /// Whether the system has "Finder", for the menu's words.
 #[cfg(target_os = "macos")]
 pub(crate) const REVEAL_TITLE: &str = "Reveal in Finder";
-#[cfg(not(target_os = "macos"))]
+#[cfg(windows)]
+pub(crate) const REVEAL_TITLE: &str = "Show in File Explorer";
+#[cfg(not(any(target_os = "macos", windows)))]
 pub(crate) const REVEAL_TITLE: &str = "Show in folder";
+
+pub(crate) const OPEN_FOLDER_TITLE: &str = if cfg!(windows) {
+    "Open in File Explorer"
+} else if cfg!(target_os = "macos") {
+    "Open in Finder"
+} else {
+    "Open in File Manager"
+};
 
 pub(crate) const OPEN_IN_BROWSER: &str = "Open in Browser";
 
@@ -1138,7 +1148,7 @@ impl SidePane {
                 row = row.child(self.header_button(
                     "hl-open",
                     "arrow.up.right",
-                    "Open in Finder".to_owned(),
+                    OPEN_FOLDER_TITLE.to_owned(),
                     p,
                     cx,
                     move |this, cx| this.open_externally(&open_path.clone(), cx),

@@ -379,21 +379,31 @@ pub struct Question {
     pub can_take: bool,
 }
 
+const MODIFIER_REQUIRED: &str = if cfg!(windows) {
+    "Include Ctrl, otherwise that key would type instead."
+} else {
+    "Include ⌘ or ⌃, otherwise that key would type instead."
+};
+
 pub fn question(outcome: &Outcome) -> Option<Question> {
     match outcome {
         Outcome::Waiting => None,
         Outcome::TypesInstead => Some(Question {
-            text: "Include ⌘ or ⌃, otherwise that key would type instead.".to_owned(),
+            text: MODIFIER_REQUIRED.to_owned(),
             can_take: false,
         }),
         Outcome::TakenByCommand(key, other) => Some(Question {
-            text: format!("{} is already {}.", key.display(), other.title()),
+            text: format!(
+                "{} is already {}.",
+                key.display_for_platform(),
+                other.title()
+            ),
             can_take: true,
         }),
         Outcome::TakenOutside(key, what) => Some(Question {
             text: format!(
                 "{} is taken by {what}, which can't be changed.",
-                key.display()
+                key.display_for_platform()
             ),
             can_take: false,
         }),
@@ -428,21 +438,23 @@ pub fn look(recorder: &Recorder, command: ShortcutCommand, bindings: &ShortcutBi
         return match &recorder.outcome {
             Outcome::Waiting | Outcome::TypesInstead => Look::Listening,
             Outcome::TakenByCommand(pressed, _) | Outcome::TakenOutside(pressed, _) => {
-                Look::Taken(pressed.display())
+                Look::Taken(pressed.display_for_platform())
             }
         };
     }
     match bindings.key(command) {
         None => Look::None,
-        Some(key) if twin(bindings, command).is_some() => Look::Taken(key.display()),
-        Some(key) => Look::Key(key.display()),
+        Some(key) if twin(bindings, command).is_some() => Look::Taken(key.display_for_platform()),
+        Some(key) => Look::Key(key.display_for_platform()),
     }
 }
 
 /// The cap's tooltip.
 pub fn cap_tip(command: ShortcutCommand, bindings: &ShortcutBindings) -> String {
     match (bindings.key(command), twin(bindings, command)) {
-        (Some(key), Some(other)) => format!("{} is also {}", key.display(), other.title()),
+        (Some(key), Some(other)) => {
+            format!("{} is also {}", key.display_for_platform(), other.title())
+        }
         _ => "Click, then press the new keys".to_owned(),
     }
 }
@@ -454,7 +466,7 @@ pub fn cap_label(command: ShortcutCommand, bindings: &ShortcutBindings) -> Strin
         command.title(),
         bindings
             .key(command)
-            .map_or_else(|| "no key".to_owned(), |k| k.display())
+            .map_or_else(|| "no key".to_owned(), |k| k.display_for_platform())
     )
 }
 
@@ -462,7 +474,7 @@ pub fn cap_label(command: ShortcutCommand, bindings: &ShortcutBindings) -> Strin
 pub fn reset_tip(command: ShortcutCommand) -> String {
     command.default_key().map_or_else(
         || "Back to no key".to_owned(),
-        |k| format!("Back to {}", k.display()),
+        |k| format!("Back to {}", k.display_for_platform()),
     )
 }
 
@@ -477,7 +489,7 @@ pub fn matches(command: ShortcutCommand, search: &str, bindings: &ShortcutBindin
         || group(command).title().to_lowercase().contains(&words)
         || bindings
             .key(command)
-            .is_some_and(|k| k.display().to_lowercase().contains(&words))
+            .is_some_and(|k| k.display_for_platform().to_lowercase().contains(&words))
 }
 
 /// A command in the dump: "Archive: ⌘K (changed)", "Hibernate: none".
@@ -582,6 +594,10 @@ mod tests {
         assert_eq!(r.command, None);
     }
 
+    fn label(chord: &str, suffix: &str) -> String {
+        format!("{}{suffix}", key(chord).display_for_platform())
+    }
+
     #[test]
     fn a_key_that_types_is_asked_about_and_it_keeps_listening() {
         let mut r = Recorder::default();
@@ -590,10 +606,7 @@ mod tests {
         let typed = key_from_press("k", false, true, false, false, true).unwrap();
         assert_eq!(r.press(typed, &b, true), None);
         assert_eq!(r.outcome, Outcome::TypesInstead);
-        assert_eq!(
-            question(&r.outcome).unwrap().text,
-            "Include ⌘ or ⌃, otherwise that key would type instead."
-        );
+        assert_eq!(question(&r.outcome).unwrap().text, MODIFIER_REQUIRED);
         assert_eq!(look(&r, Archive, &b), Look::Listening);
         assert!(
             !r.waiting(),
@@ -613,9 +626,12 @@ mod tests {
         let q = question(&r.outcome).unwrap();
         assert_eq!(
             (q.text.as_str(), q.can_take),
-            ("⌘N is already New Thread.", true)
+            (label("cmd+n", " is already New Thread.").as_str(), true)
         );
-        assert_eq!(look(&r, Archive, &b), Look::Taken("⌘N".into()));
+        assert_eq!(
+            look(&r, Archive, &b),
+            Look::Taken(key("cmd+n").display_for_platform())
+        );
         let next = r.use_taken_key(&b).unwrap();
         assert_eq!(next.key(Archive), Some(key("cmd+n")));
         assert_eq!(next.key(NewThread), None, "the other one gives it up");
@@ -631,18 +647,27 @@ mod tests {
         let q = question(&r.outcome).unwrap();
         assert_eq!(
             (q.text.as_str(), q.can_take),
-            ("⌘C is taken by Copy, which can't be changed.", false)
+            (
+                label("cmd+c", " is taken by Copy, which can't be changed.").as_str(),
+                false
+            )
         );
         assert_eq!(r.use_taken_key(&b), None);
         r.press(key("cmd+left"), &b, true);
         assert_eq!(
             question(&r.outcome).unwrap().text,
-            "⌘← is taken by Moving the Cursor, which can't be changed."
+            label(
+                "cmd+left",
+                " is taken by Moving the Cursor, which can't be changed."
+            )
         );
         r.press(key("cmd+shift+down"), &b, true);
         assert_eq!(
             question(&r.outcome).unwrap().text,
-            "⇧⌘↓ is taken by Selecting Text, which can't be changed."
+            label(
+                "cmd+shift+down",
+                " is taken by Selecting Text, which can't be changed."
+            )
         );
         r.press(key("cmd+m"), &b, true);
         assert_eq!(r.outcome, Outcome::TakenOutside(key("cmd+m"), "Minimize"));
@@ -785,16 +810,22 @@ mod tests {
         assert_eq!(twin(&b, Archive), Some(NewThread));
         assert_eq!(
             look(&Recorder::default(), Archive, &b),
-            Look::Taken("⌘N".into())
+            Look::Taken(key("cmd+n").display_for_platform())
         );
-        assert_eq!(cap_tip(Archive, &b), "⌘N is also New Thread");
+        assert_eq!(cap_tip(Archive, &b), label("cmd+n", " is also New Thread"));
         assert_eq!(cap_tip(Stop, &b), "Click, then press the new keys");
         assert_eq!(line(NewThread, &b), "New Thread: ⌘N (also Archive)");
         assert_eq!(look(&Recorder::default(), Hibernate, &b), Look::None);
         assert_eq!(Look::None.title(), "Add");
         assert_eq!(cap_label(Hibernate, &b), "Hibernate, no key");
-        assert_eq!(cap_label(Stop, &b), "Stop, ⌘.");
-        assert_eq!(reset_tip(Archive), "Back to ⌘E");
+        assert_eq!(
+            cap_label(Stop, &b),
+            format!("Stop, {}", key("cmd+.").display_for_platform())
+        );
+        assert_eq!(
+            reset_tip(Archive),
+            format!("Back to {}", key("cmd+e").display_for_platform())
+        );
         assert_eq!(reset_tip(Hibernate), "Back to no key");
     }
 
@@ -804,7 +835,14 @@ mod tests {
         assert!(matches(Archive, "  ", &b));
         assert!(matches(Archive, "arch", &b));
         assert!(matches(ZoomIn, "view", &b), "its heading");
-        assert!(matches(Archive, "⌘e", &b), "its key, whatever the case");
+        assert!(
+            matches(
+                Archive,
+                &key("cmd+e").display_for_platform().to_lowercase(),
+                &b
+            ),
+            "its key, whatever the case"
+        );
         assert!(!matches(Archive, "zoom", &b));
     }
 

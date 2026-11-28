@@ -47,7 +47,11 @@ pub(crate) const COPY_TIP: &str = "Copy the draft, with its links and formatting
 /// Edit's tip, and Done's and Undo's, which scripts find them by too.
 pub(crate) const EDIT_TIP: &str =
     "Change the draft. Your version goes with your next message, for the agent to use";
-pub(crate) const DONE_TIP: &str = "Finish changing the draft (⌘Return)";
+pub(crate) const DONE_TIP: &str = if cfg!(windows) {
+    "Finish changing the draft (Ctrl+Enter)"
+} else {
+    "Finish changing the draft (⌘Return)"
+};
 pub(crate) const UNDO_TIP: &str = "Put the agent's draft back";
 
 /// What the kit calls the box's nodes.

@@ -19,6 +19,15 @@ fn main() {
     // Something else box, on GitHub's Windows runner (12 Nov). Zed does the
     // same.
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
+        println!("cargo:rerun-if-changed=icons/threadbear.ico");
+        println!("cargo:rerun-if-changed=icons/threadbear.rc");
+        embed_resource::compile_for(
+            "icons/threadbear.rc",
+            ["threadbear-gpui"],
+            embed_resource::ParamsIncludeDirs(["icons"]),
+        )
+        .manifest_optional()
+        .expect("embed Threadbear's Windows icon");
         if std::env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc") {
             println!("cargo:rustc-link-arg-bins=/STACK:8388608");
         } else {

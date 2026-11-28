@@ -1992,7 +1992,7 @@ impl SidePane {
             if !thread.is_remote() {
                 items.push(MenuItem::action(
                     if entry.is_folder {
-                        "Open in Finder"
+                        crate::files::OPEN_FOLDER_TITLE
                     } else {
                         "Open in its app"
                     },
