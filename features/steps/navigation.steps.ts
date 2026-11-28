@@ -67,8 +67,7 @@ Then("the {string} menu hasn't {string}", async function (this: ThreadbearWorld,
 // named for its instance).
 async function appMenuKey(world: ThreadbearWorld, title: string, key: string) {
   const out = JSON.parse(okValue(await world.app.do({ cmd: 'menus' }))) as { title: string; items: { title: string; key?: string }[] }[];
-  const actualTitle = process.platform === 'win32' && title === 'Quit Threadbear' ? 'Exit' : title;
-  const item = out[0]?.items.find((i) => i.title === actualTitle);
+  const item = out[0]?.items.find((i) => i.title === title);
   assert.equal(item?.key, menuKey(key), `${title} in the app menu: ${JSON.stringify(item ?? null)}`);
 }
 

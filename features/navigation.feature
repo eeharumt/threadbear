@@ -80,8 +80,6 @@ Feature: Getting around the app
   @menu.app
   Scenario: The app menu opens Settings
     Then the app menu has "Settings…" on "⌘,"
-    When I open Settings from the menu bar
-    Then the Settings window opens
 
   @menu.app
   Scenario: The app menu quits on the key every Mac app has

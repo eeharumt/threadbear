@@ -11,25 +11,17 @@ type Menu = { title: string; items: { title: string }[] };
 // Each title in the menu, in this order, with anything else between them.
 // SwiftUI rebuilds its menus a moment after what they show changes, and
 // AppKit adds its own items once the menu bar is up, so this looks a few times.
-async function menuLists(world: ThreadbearWorld, menu: string, list: string) {
+Then('the {string} menu lists {string}', async function (this: ThreadbearWorld, menu: string, list: string) {
   const wanted = list.split(' | ');
   let titles: string[] = [];
   for (let i = 0; i < 20; i += 1) {
-    const out = JSON.parse(okValue(await world.app.do({ cmd: 'menus' }))) as Menu[];
+    const out = JSON.parse(okValue(await this.app.do({ cmd: 'menus' }))) as Menu[];
     titles = out.find((m) => m.title === menu)?.items.map((x) => x.title) ?? [];
     let at = 0;
     if (wanted.every((w) => (at = titles.indexOf(w, at)) >= 0)) return;
     await sleep(250);
   }
   assert.fail(`the ${menu} menu doesn't list ${wanted.join(', ')} in that order: ${JSON.stringify(titles)}`);
-}
-
-Then('the {string} menu lists {string}', async function (this: ThreadbearWorld, menu: string, list: string) {
-  await menuLists(this, menu, list);
-});
-
-Then('the {string} menu lists {string}, or {string} on Windows', async function (this: ThreadbearWorld, menu: string, list: string, windows: string) {
-  await menuLists(this, menu, process.platform === 'win32' ? windows : list);
 });
 
 When('I put the {string} panel in a window of its own', async function (this: ThreadbearWorld, panel: string) {
@@ -61,19 +53,6 @@ Then('the About window is open', function (this: ThreadbearWorld) {
 Then('the About window says {string}', async function (this: ThreadbearWorld, line: string) {
   const lines = (await about(this)).split(' | ');
   assert.ok(lines.includes(line), `the About window doesn't say "${line}": ${JSON.stringify(lines)}`);
-});
-
-When('I open Settings from the menu bar', async function (this: ThreadbearWorld) {
-  if (process.platform === 'win32') {
-    await this.app.do({ cmd: 'click', title: 'File' });
-    await this.app.do({ cmd: 'click', title: 'Settings…' });
-  } else {
-    await this.app.do({ cmd: 'menu-item', title: 'Settings…' });
-  }
-});
-
-Then('the Settings window opens', async function (this: ThreadbearWorld) {
-  await this.until('the Settings window to open', (d) => "settingsWindow" in d && d.settingsWindow);
 });
 
 // By hand on Tinker Desk's desktop (see the feature file): these steps only

@@ -54,7 +54,7 @@ Tauri で Windows と Android を一つにまとめた版は、2026年11月27日
 | Windows で `tb land` を動かす | `runner/` | `144032ea`、`aba788f6` |
 | Windows の `check.sh` で、Windows で落ちると分かっているテストを外す（`tb land` が1時間超から数分に） | `check.sh`、`runner/test/unit/win-acl.test.ts` | `6f2a558d` |
 | Windows の `check.sh` で、デスクトップのチェックを cargo で直接動かし、Windows のコードに lint をかけない（フォーク元も Windows は lint の対象外） | `check.sh` | 「Run the desktop checks on Windows」 |
-| Windows の実行ファイルに熊のアイコンを埋め込み、ウィンドウにメニューを表示する。操作の表記は Windows に合わせる | `desktop/` | 「Give the Windows desktop app its icon and menus」 |
+| Windows の実行ファイルに熊のアイコンを埋め込む。操作の表記は Windows に合わせる（ウィンドウ内のメニューバーは、試したあと要らないと判断して外した） | `desktop/` | 「Give the Windows desktop app its icon and menus」、「Take the menu bar back out of the Windows desktop app」 |
 | Windows のデスクトップアプリにシステムのタイトルバーを出す。パネルのバーをドラッグしたときもウィンドウが動く | `desktop/dock/src/platform.rs`、`desktop/gpui/` | 「Show the system title bar on the Windows desktop app」 |
 | CLI の更新に失敗したときのバナーで、色の制御コードや記号を外して理由の行を出す。Dismiss したことを起動し直しても覚えておく | `runner/src/updates/manager.ts`、`desktop/gpui/` | 「Say why a CLI update failed in plain text, and keep its banner dismissed」 |
 | mise で入れた OpenCode は、Update を押すと `mise upgrade opencode` で更新する（OpenCode 自身の更新は入れ方がわからずに失敗する） | `runner/src/adapters/acp/agents.ts`、`runner/src/updates/manager.ts` | 「Update OpenCode through mise when mise installed it」 |
