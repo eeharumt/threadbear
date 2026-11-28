@@ -635,6 +635,10 @@ fn step(
             if let Some(lines) = crate::about_window::dump(cx) {
                 return Ok(json!(format!("ok {}", lines.join(" | "))));
             }
+            // `"peek": true` only looks, for a check that something else opened it.
+            if cmd["peek"].as_bool() == Some(true) {
+                return Ok(json!("ok closed"));
+            }
             app.update(cx, |t, cx| t.run_menu_item("About Threadbear", window, cx))?;
             Ok(json!("ok opening"))
         }

@@ -1977,7 +1977,8 @@ too. The Mac app hasn't got it.
 
 <!-- picture: /docs-img/tall-keyboard.webp alt: Settings > Keyboard, where any command can have a key of your own -->
 
-On Windows, commands that use ⌘ on a Mac generally use **Ctrl**.
+On Windows, commands that use ⌘ on a Mac generally use **Ctrl**. There's no
+menu bar: **About Threadbear** is at the bottom of Settings' list of sections.
 
 Hold ⌘ to see the keys beside the buttons that have them. Settings (⌘,) >
 Keyboard lists every command in the menus that can have a key, and you can

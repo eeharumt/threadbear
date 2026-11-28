@@ -13,6 +13,14 @@ Feature: Settings
     When I open Settings on "models"
     Then Settings shows "models"
 
+  # Windows and Linux have no menu bar, so About Threadbear is at the foot of
+  # Settings' sections there. A Mac keeps it in the app menu (menus.feature).
+  @settings.window @mac-pending @swift-pending
+  Scenario: Settings opens About Threadbear where there's no menu bar
+    When I open Settings
+    And I press "About Threadbear" in Settings
+    Then the About window opens
+
   # A scripted Swift app's arrow keys go only to a text box (`arrow`), so the
   # list's arrows are checked on the GPUI app.
   @settings.window @swift-pending

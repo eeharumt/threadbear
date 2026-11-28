@@ -720,6 +720,46 @@ impl SettingsWindow {
                         .child(tab.title()),
                 )
             }))
+            // A Mac has About in its app menu; elsewhere there's no menu bar.
+            .when(cfg!(not(target_os = "macos")), |s| {
+                s.child(div().flex_1()).child(self.about_row(hover, cx))
+            })
+    }
+
+    /// About Threadbear, at the foot of the sections, where Windows and
+    /// Linux have no menu bar to find it in.
+    fn about_row(&self, hover: Hsla, cx: &mut Context<Self>) -> impl IntoElement {
+        let secondary = style::secondary_text(cx);
+        crate::highlights::tipped(
+            h_flex()
+                .id("settings-about")
+                .h(px(30.))
+                .px(px(8.))
+                .gap(px(9.))
+                .items_center()
+                .rounded(px(7.))
+                .hover(move |s| s.bg(hover)),
+            "About Threadbear",
+        )
+        .on_click(cx.listener(|this, _: &ClickEvent, window, cx| {
+            if let Some(app) = this.app.upgrade() {
+                app.update(cx, |app, cx| app.show_about(window, cx));
+            }
+        }))
+        .child(
+            div().w(px(18.)).flex().justify_center().child(
+                icons::symbol("info.circle")
+                    .with_size(px(13.))
+                    .text_color(secondary),
+            ),
+        )
+        .child(
+            div()
+                .text_size(px(13.))
+                .line_height(px(16.))
+                .text_color(secondary)
+                .child("About Threadbear"),
+        )
     }
 
     #[expect(

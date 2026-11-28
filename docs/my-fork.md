@@ -60,6 +60,7 @@ Tauri で Windows と Android を一つにまとめた版は、2026年11月27日
 | CLI の更新に失敗したときのバナーで、色の制御コードや記号を外して理由の行を出す。Dismiss したことを起動し直しても覚えておく | `runner/src/updates/manager.ts`、`desktop/gpui/` | 「Say why a CLI update failed in plain text, and keep its banner dismissed」 |
 | mise で入れた OpenCode は、Update を押すと `mise upgrade opencode` で更新する（OpenCode 自身の更新は入れ方がわからずに失敗する） | `runner/src/adapters/acp/agents.ts`、`runner/src/updates/manager.ts` | 「Update OpenCode through mise when mise installed it」 |
 | リポジトリのパッチの「Website」ボタンを、Mike の Mac 以外では出さない（Windows 版はパネルの中にページを出せず、押しても開かない） | `.threadbear/patches/app-store.ts`、`runner/test/unit/fork-view.test.ts` | 「Hide the Website chip outside Mike's Mac」 |
+| Windows のデスクトップアプリで、設定ウィンドウの左の一覧の一番下に「About Threadbear」を出す（メニューバーが無いので、バージョン情報の入口） | `desktop/gpui/src/settings_window.rs`、`features/settings.feature` | 「Open About Threadbear from Settings on Windows」 |
 | セルフホストの Convex（`.env.local` に `CONVEX_SELF_HOSTED_URL`）では、Convex パネルがそのサーバーのダッシュボード（3210 番の隣の 6791 番）を開く | `runner/src/patches.ts` | 「Open a self-hosted Convex's own dashboard from the Convex panel」 |
 
 ## Windows で作業するとき

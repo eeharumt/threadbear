@@ -46,6 +46,17 @@ When('I choose {string} in the app menu', async function (this: ThreadbearWorld,
   this.lastAnswer = await about(this);
 });
 
+// Only looks (`peek`), so it's the click that opened it, not this step.
+Then('the About window opens', async function (this: ThreadbearWorld) {
+  let out = '';
+  for (let i = 0; i < 20; i += 1) {
+    out = okValue(await this.app.do({ cmd: 'den', peek: true }));
+    if (out !== 'closed') return;
+    await sleep(150);
+  }
+  assert.fail("the About window didn't open");
+});
+
 Then('the About window is open', function (this: ThreadbearWorld) {
   assert.ok(this.lastAnswer !== undefined, 'About Threadbear wasn\'t chosen');
 });
