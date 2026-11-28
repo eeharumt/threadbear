@@ -424,6 +424,57 @@ fn testSummaryCountsWorkInTheOrderItHappened() {
     assert_eq!(group.member_ids.len(), 11);
 }
 
+// The runner's "Not ended: ..." notes to end_turn are a once-a-turn ask to
+// look again, not a failure, so they aren't counted or drawn as one.
+#[test]
+fn testEndTurnSentBackIsNotAFailure() {
+    let end_turn = |seq, item| {
+        call_with(
+            seq,
+            item,
+            "mcp__threadbear__end_turn",
+            "other",
+            "threadbear: end_turn",
+            json!({"needs": "nothing"}),
+        )
+    };
+    let model = from_events(vec![
+        started(1),
+        call_titled(2, "c1", "npm test"),
+        result_with(3, "c1", false, "1 failing", json!([])),
+        end_turn(4, "e1"),
+        result_with(
+            5,
+            "e1",
+            false,
+            "Not ended: read this card as the user will.",
+            json!([]),
+        ),
+        end_turn(6, "e2"),
+        result_with(7, "e2", false, "Invalid arguments: needs", json!([])),
+        reasoning(8, "r1"),
+    ]);
+    let tool = |id: &str| match model.item(&format!("t:{id}")).map(|r| &r.content) {
+        Some(RowContent::Tool(tool)) => tool.clone(),
+        other => panic!("not a tool row: {other:?}"),
+    };
+    assert!(tool("e1").sent_back());
+    assert!(!tool("e1").failed());
+    assert!(!tool("e2").sent_back());
+    assert!(tool("e2").failed());
+    let groups: Vec<_> = model
+        .rows()
+        .iter()
+        .filter_map(|r| match &r.content {
+            RowContent::Group(group) => Some(group.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(groups.len(), 1, "{:?}", model.rows());
+    // The failed npm test and the refused arguments, not the note.
+    assert_eq!(groups[0].failed_count, 2);
+}
+
 #[test]
 fn testSummaryWordsForOtherWork() {
     fn summary(events: Vec<Event>) -> String {

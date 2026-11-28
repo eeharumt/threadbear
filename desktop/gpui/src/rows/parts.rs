@@ -36,6 +36,7 @@ pub(crate) fn lucide(symbol: &str) -> &'static [u8] {
         "wrench.and.screwdriver" => lucide::Wrench.1,
         "hammer" => lucide::Hammer.1,
         "xmark.circle" | "xmark.circle.fill" => lucide::CircleX.1,
+        "arrow.uturn.backward" => lucide::Undo2.1,
         "checkmark.circle" | "checkmark.circle.fill" => lucide::CircleCheck.1,
         "checkmark" => lucide::Check.1,
         "clock" => lucide::Clock.1,

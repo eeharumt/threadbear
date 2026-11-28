@@ -385,7 +385,21 @@ impl ToolItem {
     }
 
     pub fn failed(&self) -> bool {
-        self.result.as_ref().map(|r| !r.ok).unwrap_or(false)
+        self.result.as_ref().map(|r| !r.ok).unwrap_or(false) && !self.sent_back()
+    }
+
+    /// An end_turn the runner sent back with one of its once-a-turn notes
+    /// ("Not ended: read this card as the user will."). The call comes back
+    /// as an error so the agent knows the turn didn't end, but nothing went
+    /// wrong: drawn as a failure, it read as end_turn breaking.
+    pub fn sent_back(&self) -> bool {
+        let Some(result) = self.result.as_ref().filter(|r| !r.ok) else {
+            return false;
+        };
+        let name = self.name();
+        name.starts_with("mcp__threadbear")
+            && name.ends_with("__end_turn")
+            && result.text.trim_start().starts_with("Not ended")
     }
 
     /// The diffs to show: the runner's `edit.diff`s if it sent any,

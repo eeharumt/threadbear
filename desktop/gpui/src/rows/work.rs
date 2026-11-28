@@ -228,6 +228,8 @@ impl ThreadPane {
         );
         let (symbol, icon_color) = if tool.failed() {
             ("xmark.circle.fill", style::failed_text(cx))
+        } else if tool.sent_back() {
+            ("arrow.uturn.backward", style::faint_icon(cx))
         } else {
             (
                 ToolPresentation::symbol(tool.tool_kind(), &tool.name()),
@@ -235,10 +237,13 @@ impl ThreadPane {
             )
         };
         let file = ToolPresentation::file_title(tool);
-        let runs: Runs = match &file {
+        let mut runs: Runs = match &file {
             Some(f) => vec![(format!("{} {}", f.verb, f.name), quiet)],
             None => vec![(ToolPresentation::short_title(&tool.title(), 160), quiet)],
         };
+        if tool.sent_back() {
+            runs.push(("  ·  sent back".to_owned(), faint));
+        }
         let diffs: Vec<_> = tool
             .effective_diffs()
             .into_iter()
