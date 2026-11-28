@@ -38,7 +38,9 @@ test("a fork's own patches show nothing of Mike's", async () => {
   assert.deepEqual(base.patches.filter((p) => p.error).map((p) => `${p.id}: ${p.error}`), []);
   // Commands run in the real checkout, for git, but with the stranger's home.
   const run = async (command: string): Promise<CommandOutcome> => {
-    const r = spawnSync('/bin/sh', ['-c', command], { cwd: REPO, env: { ...process.env, HOME: home }, encoding: 'utf8', timeout: 20_000 });
+    // Windows has no /bin/sh: Git's sh on PATH, or every command fails and
+    // a `when` comes out false without checking anything.
+    const r = spawnSync(process.platform === 'win32' ? 'sh' : '/bin/sh', ['-c', command], { cwd: REPO, env: { ...process.env, HOME: home }, encoding: 'utf8', timeout: 20_000 });
     return { ok: r.status === 0, exitCode: r.status ?? undefined, text: `${r.stdout ?? ''}${r.stderr ?? ''}`, truncated: false, durationMs: 0 };
   };
   const set = await applyLive(base, { cwd: copy, threadId: 'fork-view', run });
