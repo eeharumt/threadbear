@@ -57,6 +57,7 @@ Tauri で Windows と Android を一つにまとめた版は、2026年11月27日
 | Windows のデスクトップアプリにシステムのタイトルバーを出す。パネルのバーをドラッグしたときもウィンドウが動く | `desktop/dock/src/platform.rs`、`desktop/gpui/` | 「Show the system title bar on the Windows desktop app」 |
 | CLI の更新に失敗したときのバナーで、色の制御コードや記号を外して理由の行を出す。Dismiss したことを起動し直しても覚えておく | `runner/src/updates/manager.ts`、`desktop/gpui/` | 「Say why a CLI update failed in plain text, and keep its banner dismissed」 |
 | mise で入れた OpenCode は、Update を押すと `mise upgrade opencode` で更新する（OpenCode 自身の更新は入れ方がわからずに失敗する） | `runner/src/adapters/acp/agents.ts`、`runner/src/updates/manager.ts` | 「Update OpenCode through mise when mise installed it」 |
+| セルフホストの Convex（`.env.local` に `CONVEX_SELF_HOSTED_URL`）では、Convex パネルがそのサーバーのダッシュボード（3210 番の隣の 6791 番）を開く | `runner/src/patches.ts` | 「Open a self-hosted Convex's own dashboard from the Convex panel」 |
 
 ## Windows で作業するとき
 
@@ -66,4 +67,7 @@ Tauri で Windows と Android を一つにまとめた版は、2026年11月27日
   - **更新ボタン:** DESKTOP-01 の Threadbear では、`C:\Users\mossa\Projects` のスレッドのメッセージ欄の上に「Windows アプリを更新」ボタンがある。押すと、GitHub の main からビルドして NAS に置き、`install.cmd /quiet` でアプリを入れ替えて開き直す（ビルド済みのものがあれば十数秒、初回は数分）。ボタンは `C:\Users\mossa\Projects\.threadbear\patches\windows-app.ts`、中身は `~/.threadbear/windows-app-update.sh`、経過は `%LOCALAPPDATA%\Threadbear\Logs\windows-app-update.log` に出る。どれもリポジトリの外にある。パッチを `~/.threadbear/patches` に置かないのは、Windows では一時フォルダがホームの下にあり、ランナーのテストがそのパッチを拾って落ちるから。
   - **ほかの PC（GEN-WS）:** ボタンで更新したあと、NAS の `install.cmd` を実行すると同じ版になる。NAS の `version.txt` に、いま置いてある版のコミットが書いてある。
 - **Android アプリ:** `android-native/` で、JDK 17（mise の temurin）と Android SDK を使って `./gradlew.bat --no-daemon :app:assembleFdroidRelease -PthreadbearFork=eeharu -PthreadbearRelease=<日付>` を走らせる。`~/.config/threadbear-android/release.jks` の鍵で署名されるので、入っている版に上書きできる。通知はスマホの ntfy（UnifiedPush）経由で届く。
+- **Convex のダッシュボード:** GEN-WS の Convex 本体に、Convex のダッシュボード（`get-convex/convex-backend` のリリースにある `dashboard.zip`）を付けてある。`C:\Users\mossa\Tools\convex-dashboard\serve-dashboard.mjs` が 127.0.0.1:16791 で配信し、`tailscale serve` で `https://gen-ws.tail01c84.ts.net:6791` に出す。ログオン時に、タスクスケジューラの `\Threadbear\convex-dashboard (mossa)` が `%LOCALAPPDATA%\Threadbear\scripts\start-convex-dashboard.ps1` で起動する。
+  - 開くと管理キーを聞かれる。キーは、GEN-WS の `%LOCALAPPDATA%\Threadbear\secrets\convex-self-hosted.env` にある `CONVEX_SELF_HOSTED_ADMIN_KEY`。
+  - Threadbear の Convex パネルがここを開くのは、そのフォルダの `.env.local` に `CONVEX_SELF_HOSTED_URL=https://gen-ws.tail01c84.ts.net:3210` が書いてあるとき。DESKTOP-01 と GEN-WS の threadbear のチェックアウトには書いてある。Windows のアプリはパネルの中にページを出せないので、ブラウザで開く。
 - **スマホのペアリング:** メインのランナーは GEN-WS にあり、QR はそこでしか出せない。

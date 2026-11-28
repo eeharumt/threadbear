@@ -5,7 +5,7 @@ import path from 'node:path';
 import { tmpDir } from '../helpers/fakes.ts';
 import { makePng } from '../helpers/png.ts';
 import { checkPanel } from '../helpers/protocol-check.ts';
-import { CONVEX_DASHBOARD, CONVEX_LOCAL_DASHBOARD, convexDashboardUrl, parseEnvValue, projectPanels, renderPanel } from '../../src/patches.ts';
+import { CONVEX_DASHBOARD, CONVEX_LOCAL_DASHBOARD, convexDashboardUrl, convexSelfHostedDashboard, parseEnvValue, projectPanels, renderPanel } from '../../src/patches.ts';
 
 function project(home: string, rel: string, files: Record<string, string | null> = {}): string {
   const dir = path.join(home, rel);
@@ -86,6 +86,22 @@ test('dashboard URLs: no deployment, anonymous local, quoted .env values, .env.l
   const home = tmpDir();
   const dir = project(home, 'p', { convex: null, 'package.json': '{}', '.env': 'CONVEX_DEPLOYMENT=prod:from-env\n', '.env.local': 'CONVEX_DEPLOYMENT=dev:from-local\n' });
   assert.equal(projectPanels(dir, home)[0]?.note, 'from-local (dev)');
+});
+
+test('a self-hosted backend\'s panel opens its own dashboard, not dashboard.convex.dev', () => {
+  assert.deepEqual(convexSelfHostedDashboard('https://box.tailnet.ts.net:3210'), { url: 'https://box.tailnet.ts.net:6791', note: 'self-hosted, box.tailnet.ts.net' });
+  assert.equal(convexSelfHostedDashboard('http://127.0.0.1:13210')?.url, 'http://127.0.0.1:16791');
+  // No known dashboard beside another port, or no address at all.
+  assert.equal(convexSelfHostedDashboard('https://convex.example.com'), undefined);
+  assert.equal(convexSelfHostedDashboard('not a url'), undefined);
+  assert.equal(convexSelfHostedDashboard(undefined), undefined);
+  const home = tmpDir();
+  const dir = project(home, 'p', { convex: null, 'package.json': '{}', '.env.local': 'CONVEX_SELF_HOSTED_URL=https://box.tailnet.ts.net:3210\n' });
+  const [panel] = projectPanels(dir, home);
+  assert.equal(panel?.url, 'https://box.tailnet.ts.net:6791');
+  assert.equal(panel?.note, 'self-hosted, box.tailnet.ts.net');
+  // No deploy key goes to it: only a cloud deployment's panel gets one.
+  assert.equal(panel?.convex, undefined);
 });
 
 test('an Xcode project gets the Simulator panel; both patches can apply', () => {

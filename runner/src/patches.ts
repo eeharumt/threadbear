@@ -921,7 +921,7 @@ export function projectPanels(cwd: string, home: string = os.homedir(), projectF
 // `convex dev` writes) wins over `.env`.
 function convexPanel(dir: string, dirs: FolderCache): Panel {
   const deployment = readEnvValue(dir, 'CONVEX_DEPLOYMENT', dirs);
-  const { url, note } = convexDashboardUrl(deployment);
+  const { url, note } = convexSelfHostedDashboard(readEnvValue(dir, 'CONVEX_SELF_HOSTED_URL', dirs)) ?? convexDashboardUrl(deployment);
   const panel: Panel = { id: 'convex.dashboard', title: 'Convex', kind: 'url', url, icon: 'cylinder.split.1x2', patch: 'convex' };
   if (note) panel.note = note;
   const embed = convexEmbed(deployment, readEnvWhere(dir, (name) => /(^|_)CONVEX_URL$/.test(name), dirs));
@@ -990,6 +990,23 @@ export function convexDashboardUrl(deployment: string | undefined): { url: strin
   if (!name) return { url: CONVEX_DASHBOARD };
   if (type === 'anonymous') return { url: CONVEX_LOCAL_DASHBOARD, note: `${name}, local; the dashboard is up while convex dev runs` };
   return { url: `${CONVEX_DASHBOARD}/d/${encodeURIComponent(name)}`, note: type ? `${name} (${type})` : name };
+}
+
+// A self-hosted backend's own dashboard, which dashboard.convex.dev can't
+// show. It sits beside the API on a port of its own: 6791 beside 3210 in
+// Convex's self-hosting setup, 16791 beside 13210 in Threadbear's
+// (docs/self-hosting.md). Another port: no dashboard known.
+export function convexSelfHostedDashboard(backend: string | undefined): { url: string; note: string } | undefined {
+  let u: URL;
+  try {
+    u = new URL(backend ?? '');
+  } catch {
+    return undefined;
+  }
+  const port = ({ '3210': '6791', '13210': '16791' } as Record<string, string>)[u.port];
+  if (!port || (u.protocol !== 'https:' && u.protocol !== 'http:') || u.username || u.password) return undefined;
+  u.port = port;
+  return { url: u.origin, note: `self-hosted, ${u.hostname}` };
 }
 
 // A folder with its functions in convex/ and a package.json or convex.json
