@@ -455,9 +455,13 @@ impl Threadbear {
     }
 
     /// `WindowGrip`: the strip under the traffic lights, which moves the
-    /// window as the bars beside it do, double-click zooms.
-    fn window_grip(&self) -> impl IntoElement {
-        div()
+    /// window as the bars beside it do, double-click zooms. Windows has the
+    /// system title bar above instead (main.rs), so no strip.
+    fn window_grip(&self) -> Option<impl IntoElement> {
+        if cfg!(windows) {
+            return None;
+        }
+        let grip = div()
             .id("window-grip")
             .w_full()
             .flex_none()
@@ -468,7 +472,8 @@ impl Threadbear {
                 } else {
                     threadbear_dock::platform::start_window_move(window);
                 }
-            })
+            });
+        Some(grip)
     }
 
     /// The column down the left (`ActivityBar`).
@@ -720,11 +725,15 @@ impl Threadbear {
             .h_full()
             // Starts under the title bar strip: the traffic lights are wider
             // than the bar, so a full-height line cut between the yellow and
-            // green dots (ActivityBar).
+            // green dots (ActivityBar). Windows has no traffic lights over it.
             .child(
                 div()
                     .absolute()
-                    .top(px(crate::header::HEADER_HEIGHT))
+                    .top(px(if cfg!(windows) {
+                        0.
+                    } else {
+                        crate::header::HEADER_HEIGHT
+                    }))
                     .bottom_0()
                     .right_0()
                     .w(gpui_kit::px(1.))
@@ -736,7 +745,9 @@ impl Threadbear {
                     .items_center()
                     .pb(px(10.))
                     .gap(px(4.))
-                    .child(self.window_grip())
+                    // Level with the sidebar's search field, in its 38pt row.
+                    .when(cfg!(windows), |bar| bar.pt(px(3.)))
+                    .children(self.window_grip())
                     // The views together, for the tour to light up (not the
                     // icons at the foot), over the lit square on its way.
                     .child(
