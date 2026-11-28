@@ -57,7 +57,7 @@ const WORDS: Record<string, string> = {
 export default {
   icon: "pawprint",
   actions: [
-    { title: "Website", icon: "safari", url: "https://threadbear.mikecann.app/" },
+    { title: "Website", icon: "safari", url: "https://threadbear.mikecann.app/", when: onMikesMac },
     { title: "App Store Connect", icon: "app.badge", url: CONNECT, when: onMikesMac },
     { title: "Sentry", icon: "exclamationmark.triangle", url: "https://mikec.sentry.io/issues/?project=4512336956293120", when: onMikesMac },
     {

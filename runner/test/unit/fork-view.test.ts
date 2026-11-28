@@ -22,7 +22,7 @@ import { applyLive, loadPatchSet, type CommandOutcome } from '../../src/patches.
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 
 const SHOWN = {
-  actions: [['Website', 'https://threadbear.mikecann.app/']],
+  actions: [],
   panels: ['Worktrees'],
 };
 

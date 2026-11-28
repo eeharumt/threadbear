@@ -58,6 +58,7 @@ Tauri で Windows と Android を一つにまとめた版は、2026年11月27日
 | Windows のデスクトップアプリにシステムのタイトルバーを出す。パネルのバーをドラッグしたときもウィンドウが動く | `desktop/dock/src/platform.rs`、`desktop/gpui/` | 「Show the system title bar on the Windows desktop app」 |
 | CLI の更新に失敗したときのバナーで、色の制御コードや記号を外して理由の行を出す。Dismiss したことを起動し直しても覚えておく | `runner/src/updates/manager.ts`、`desktop/gpui/` | 「Say why a CLI update failed in plain text, and keep its banner dismissed」 |
 | mise で入れた OpenCode は、Update を押すと `mise upgrade opencode` で更新する（OpenCode 自身の更新は入れ方がわからずに失敗する） | `runner/src/adapters/acp/agents.ts`、`runner/src/updates/manager.ts` | 「Update OpenCode through mise when mise installed it」 |
+| リポジトリのパッチの「Website」ボタンを、Mike の Mac 以外では出さない（Windows 版はパネルの中にページを出せず、押しても開かない） | `.threadbear/patches/app-store.ts`、`runner/test/unit/fork-view.test.ts` | 「Hide the Website chip outside Mike's Mac」 |
 | セルフホストの Convex（`.env.local` に `CONVEX_SELF_HOSTED_URL`）では、Convex パネルがそのサーバーのダッシュボード（3210 番の隣の 6791 番）を開く | `runner/src/patches.ts` | 「Open a self-hosted Convex's own dashboard from the Convex panel」 |
 
 ## Windows で作業するとき
@@ -65,8 +66,8 @@ Tauri で Windows と Android を一つにまとめた版は、2026年11月27日
 - **改行コード:** このリポジトリでは `git config core.autocrlf false` にしてある。Git for Windows は既定で改行を CRLF にして取り出すが、このリポジトリのツールは LF を前提にしている（ウェブサイトのビルドが止まった、2026年11月27日）。新しく clone したら、同じ設定をしてから取り出し直す。
 - **偽の `.git` フォルダ:** Cursor が、ホームフォルダや `AppData\Local` に検索の索引だけを入れた `.git` を作ることがある。あると、ランナーがその下のフォルダを git のリポジトリと思い込み、テストが落ちる。見つけたら脇へ移す。
 - **デスクトップアプリ:** `desktop/` で `cargo build --release -p threadbear-gpui` を走らせ、`threadbear-gpui.exe` と `threadbear-web-helper.exe` を `\192.168.11.22\ssd\software\threadbear-windows\` に置く。各 PC では、そこにある `install.cmd` を実行すると入る。フォーク元の自動更新は Mac だけなので、Windows は自分で更新する。
-  - **更新ボタン:** DESKTOP-01 の Threadbear では、`C:\Users\mossa\Projects` のスレッドのメッセージ欄の上に「Windows アプリを更新」ボタンがある。押すと、GitHub の main からビルドして NAS に置き、`install.cmd /quiet` でアプリを入れ替えて開き直す。ビルドは数分かかることがある。最新の版が入っていれば、アプリを開き直さずに結果を返す。失敗したときはスレッドに理由とログの場所が出る。ボタンは `C:\Users\mossa\Projects\.threadbear\patches\windows-app.ts`、中身は `~/.threadbear/windows-app-update.sh`、経過は `%LOCALAPPDATA%\Threadbear\Logs\windows-app-update.log` に出る。どれもリポジトリの外にある。パッチを `~/.threadbear/patches` に置かないのは、Windows では一時フォルダがホームの下にあり、ランナーのテストがそのパッチを拾って落ちるから。
-  - **ほかの PC（GEN-WS）:** ボタンで更新したあと、NAS の `install.cmd` を実行すると同じ版になる。NAS の `version.txt` に、いま置いてある版のコミットが書いてある。
+  - **更新:** DESKTOP-01 で `bash ~/.threadbear/windows-app-update.sh` を実行する。GitHub の main からビルドして NAS に置き、`install.cmd /quiet` でアプリを入れ替えて開き直す。ビルドは数分かかることがある。最新の版が入っていれば、アプリを開き直さない。経過は `%LOCALAPPDATA%\Threadbear\Logs\windows-app-update.log` に出る。どちらもリポジトリの外にある。以前はこれを呼ぶ「Windows アプリを更新」ボタン（パッチ）があったが、要らないので 2026年11月28日に外した（`~/.threadbear/removed-patches/windows-app.ts`）。
+  - **ほかの PC（GEN-WS）:** DESKTOP-01 で更新したあと、NAS の `install.cmd` を実行すると同じ版になる。NAS の `version.txt` に、いま置いてある版のコミットが書いてある。
 - **ランナー:** どちらの PC でも、`C:\Users\mossa\Projects\threadbear\runner` のチェックアウトから動く。ログオン時に、タスクスケジューラの `\Threadbear\runner-checkout (mossa)` が `%LOCALAPPDATA%\Threadbear\scripts\start-runner.ps1` で起動する。このスクリプトは、ランナーが再起動のために exit 0 で終わったら起動し直す（2026年11月28日から）。
   - **更新:** その PC のチェックアウトで `git merge --ff-only origin/main` を実行してから、スレッドの外で `node bin/tb restart --force` を実行する。スレッドが止まるのを待ってから再起動する。スレッドの中からは、チェックアウトのランナーは再起動を断る。
   - GEN-WS に ssh で入ったときは mise のシムが動かないので、node は `C:\Users\mossa\AppData\Local\mise\installs\node\<版>\node.exe` を直接指定する（`start-runner.ps1` に書いてある版）。
